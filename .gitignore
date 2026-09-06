@@ -1,0 +1,64 @@
+# =========================
+# C/C++ 컴파일 결과물
+# =========================
+# Object files
+*.o
+*.obj
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Libraries (Static/Shared)
+*.lib
+*.a
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# =========================
+# 빌드 디렉토리 (CMake, Make 등)
+# =========================
+build/
+out/
+bin/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+
+# =========================
+# VS Code 관련 설정 및 캐시
+# =========================
+# 기본적으로 .vscode 폴더는 무시하되, 팀원과 공유해야 하는 설정 파일은 예외 처리
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/c_cpp_properties.json
+
+# VS Code 워크스페이스 파일
+*.code-workspace
+
+# C/C++ Extension(IntelliSense) 캐시 및 데이터베이스
+.vscode/ipch/
+*.db
+*.VC.db
+*.VC.opendb
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# MSVC (Visual Studio) 빌드 및 디버그 파일
+*.pdb
+*.ilk
+
+# =========================
+# OS 임시 파일
+# =========================
+.DS_Store
+Thumbs.db
