@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <windows.h>
+#include "PermissionCheck.h"
 #include "FirewallManager.h"
 
 // 다중 IP를 콤마 문자열로 묶어주는 헬퍼
@@ -21,6 +23,13 @@ std::wstring ParseIps(int argc, char* argv[], int startIndex) {
 int main(int argc, char* argv[]) {
     std::locale::global(std::locale("ko_KR.UTF-8"));
 
+    // 방화벽 수정 권한 사전 체크
+    if (!HasFirewallControlPermission()) {
+        std::cerr << "[접근 거부] 방화벽 규칙을 수정할 권한이 없습니다.\n"
+                  << "관리자 권한(Administrator) 또는 '네트워크 구성 연산자' 권한이 필요합니다.\n";
+        return 1;
+    }
+
     if (argc < 2) {
         std::cerr << "[사용법] FirewallTool.exe <add|remove|list|clear> [IP1] [IP2] ...\n";
         std::cerr << "[예시 1] FirewallTool.exe add 192.168.1.100 10.0.0.0/24\n";
@@ -31,7 +40,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::string command = argv[1];
-
+    
     // list와 clear 명령어는 IP 인자가 필요 없으므로 인자 개수 검증을 다르게 가져갑니다.
     if ((command == "add" || command == "remove") && argc < 3) {
         std::cerr << "[오류] '" << command << "' 명령어는 최소 1개 이상의 IP 인자가 필요합니다.\n";
@@ -59,7 +68,7 @@ int main(int argc, char* argv[]) {
         if (success) {
             std::wcout << L"[성공] '" << std::wstring(command.begin(), command.end()) << L"' 작업 완료. 대상 IP: " << targetIps << L"\n";
         } else {
-            std::cerr << "[오류] 작업 실패 (관리자 권한으로 실행했는지 확인하세요)\n";
+            std::cerr << "[오류] 작업 처리 중 내부 에러가 발생했습니다.\n";
         }
     } 
     else if (command == "list") {
