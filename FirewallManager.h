@@ -30,6 +30,33 @@ inline std::wstring CidrToSubnetMask(int cidr) {
     return wss.str();
 }
 
+// [내부 헬퍼 함수] 서브넷 마스크(예: 255.255.255.0) 문자열을 CIDR 값(예: 24)로 변환
+inline std::wstring DenormalizeIpOutput(const std::wstring& ip) {
+    size_t slashPos = ip.find(L'/');
+    if (slashPos != std::wstring::npos) {
+        std::wstring maskStr = ip.substr(slashPos + 1);
+        
+        // 1. 단일 IP 복원 (/255.255.255.255 제거)
+        if (maskStr == L"255.255.255.255") {
+            return ip.substr(0, slashPos);
+        }
+
+        // 2. 서브넷 마스크 복원 (255.255.255.0 -> /24)
+        int a, b, c, d;
+        if (swscanf_s(maskStr.c_str(), L"%d.%d.%d.%d", &a, &b, &c, &d) == 4) {
+            unsigned long mask = (a << 24) | (b << 16) | (c << 8) | d;
+            int cidr = 0;
+            while (mask > 0) {
+                if (mask & 0x80000000) cidr++;
+                else break;
+                mask <<= 1;
+            }
+            return ip.substr(0, slashPos) + L"/" + std::to_wstring(cidr);
+        }
+    }
+    return ip;
+}
+
 // [내부 헬퍼 함수] 사용자 입력 IP를 방화벽 내부 표준 포맷(예: "1.2.3.4/255.255.255.0")으로 강제 변환 (정규화)
 inline std::wstring NormalizeIpInput(const std::wstring& ip) {
     // IPv6의 경우 (콜론 포함) 서브넷 마스크를 씌우지 않고 그대로 통과
@@ -131,7 +158,12 @@ inline std::vector<std::wstring> GetBlockedIpList() {
             if (SUCCEEDED(pFwRule->get_RemoteAddresses(&bstrExistingRemotes)) && bstrExistingRemotes != nullptr) {
                 std::wstring existingIps(bstrExistingRemotes);
                 SysFreeString(bstrExistingRemotes);
-                if (existingIps != L"*") ipList = SplitIps(existingIps);
+                if (existingIps != L"*") {
+                    std::vector<std::wstring> rawIps = SplitIps(existingIps);
+                    for (const auto& rawIp : rawIps) {
+                        ipList.push_back(DenormalizeIpOutput(rawIp)); // 밖으로 내보낼 때만 예쁘게 포장
+                    }
+                }
             }
             pFwRule->Release();
         }
