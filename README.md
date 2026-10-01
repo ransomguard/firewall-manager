@@ -1,6 +1,9 @@
 # IP 차단 및 해제 도구
 
-방화벽 내 `Block_Malicious_IP_List` 라는 이름의 룰로 관리됩니다.
+방화벽 룰은 다음과 같은 규칙 이름으로 관리됩니다.
+
+- 인바운드: `Block_Malicious_IP_List_IN`
+- 아웃바운드: `Block_Malicious_IP_List_OUT`
 
 
 

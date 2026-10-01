@@ -72,11 +72,10 @@ int main(int argc, char* argv[]) {
         }
     } 
     else if (command == "list") {
-        // 헤더에 선언된 목록 조회 함수 호출 가정 (예: GetBlockedIpList)
         std::vector<std::wstring> ipList = GetBlockedIpList();
         
         if (ipList.empty()) {
-            std::wcout << L"[안내] 등록된 차단 IP가 없거나 규칙(" << FIXED_RULE_NAME << L")이 존재하지 않습니다.\n";
+            std::wcout << L"[안내] 차단된 IP가 없습니다.\n";
         } else {
             std::wcout << L"[현재 차단된 IP 목록 (" << ipList.size() << L"개)]:\n";
             for (size_t i = 0; i < ipList.size(); ++i) {
@@ -86,10 +85,9 @@ int main(int argc, char* argv[]) {
         success = true;
     } 
     else if (command == "clear") {
-        // 헤더에 선언된 전체 규칙 삭제 함수 호출 가정 (예: ClearAllFirewallRules)
         success = ClearAllFirewallRules();
         if (success) {
-            std::wcout << L"[성공] 차단 목록이 모두 초기화(삭제)되었습니다.\n";
+            std::wcout << L"[성공] 차단 목록이 초기화되었습니다.\n";
         } else {
             std::cerr << "[오류] 초기화 실패 또는 삭제할 규칙이 없습니다.\n";
         }
