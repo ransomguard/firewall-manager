@@ -10,32 +10,35 @@
 ## 사용법
 
 > [!NOTE]
-> `output.exe`는 빌드 후 생성된 실행 파일
+> `output.exe`는 빌드 후 생성된 실행 파일,
+> block 대신 whitelist 입력 시 화이트리스트 등록, 해제 및 조회가 가능함
+
+`output.exe <block|whitelist> <add|remove|list|clear> [IP1] [IP2] ...`
 
 ### 차단
 
 ```powershell
-output.exe add 192.168.1.100
-output.exe add 192.168.1.100 192.168.1.200
-output.exe add 192.168.1.0/24
+output.exe block add 192.168.1.100
+output.exe block add 192.168.1.100 192.168.1.200
+output.exe block add 192.168.1.0/24
 ```
 
 ### 해제
 
 ```powershell
-output.exe remove 192.168.1.100
-output.exe remove 192.168.1.100 192.168.1.200
-output.exe remove 192.168.1.0/24
+output.exe block remove 192.168.1.100
+output.exe block remove 192.168.1.100 192.168.1.200
+output.exe block remove 192.168.1.0/24
 ```
 
 ### 차단된 IP 목록
 
 ```powershell
-output.exe list
+output.exe block list
 ```
 
 ### 차단된 IP 모두 제거
 
 ```powershell
-output.exe clear
+output.exe block clear
 ```
