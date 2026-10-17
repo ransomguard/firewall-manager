@@ -1,3 +1,5 @@
+#pragma once        // 중복 정의 에러 차단
+
 #include <iostream>
 #include <windows.h>
 
@@ -8,7 +10,7 @@ namespace Ransom0 {
     namespace Firewall {
         namespace Permission {
             // 방화벽 제어 권한(관리자 또는 네트워크 구성 연산자) 보유 여부를 확인하는 함수
-            bool HasFirewallControl() {
+            inline bool HasFirewallControl() {
                 BOOL bIsAdmin = FALSE;
                 BOOL bIsNetConfigOp = FALSE;
 

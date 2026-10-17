@@ -1,7 +1,7 @@
 #pragma once        // 중복 정의 에러 차단
 
-// #include <windows.h>      // Windows API 기본 헤더
 #include <netfw.h>        // Windows Defender 방화벽 인터페이스
+#include <wrl/client.h>   // Microsoft::WRL::ComPtr (메모리 누수 방지 스마트 포인터)
 #include <string>         // std::wstring
 #include <vector>         // std::vector
 #include <algorithm>      // std::find
@@ -10,6 +10,8 @@
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleaut32.lib")
+
+using Microsoft::WRL::ComPtr;
 
 namespace Ransom0 {
     namespace Firewall {
@@ -38,7 +40,7 @@ namespace Ransom0 {
                         return;
                     }
 
-                    INetFwRule* pRule = nullptr;
+                    ComPtr<INetFwRule> pRule;
                     HRESULT hr = pFwRules->Item(_bstr_t(ruleName), &pRule);
 
                     if (SUCCEEDED(hr) && pRule != nullptr) {
@@ -47,12 +49,10 @@ namespace Ransom0 {
 
                         // 사용자가 임의로 방화벽 룰을 '사용 안 함'으로 바꿨을 수 있으므로 강제로 다시 켬
                         pRule->put_Enabled(VARIANT_TRUE);
-
-                        pRule->Release();
                     }
                     else {
                         // 3. 기존 룰이 없는 경우 새로 생성
-                        hr = CoCreateInstance(__uuidof(NetFwRule), NULL, CLSCTX_INPROC_SERVER, __uuidof(INetFwRule), (void**)&pRule);
+                        hr = CoCreateInstance(__uuidof(NetFwRule), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pRule));
                         if (SUCCEEDED(hr) && pRule != nullptr) {
                             pRule->put_Name(_bstr_t(ruleName));
                             pRule->put_Description(_bstr_t(desc));
@@ -65,10 +65,8 @@ namespace Ransom0 {
                             if (SUCCEEDED(hr)) {
                                 // 룰 생성 실패 시 존재하지 않는 상태이므로 성공했을 때만 방화벽 룰을 강제로 켬
                                 pRule->put_Enabled(VARIANT_TRUE);
-                                pFwRules->Add(pRule);
+                                pFwRules->Add(pRule.Get());
                             }
-
-                            pRule->Release();
                         }
                     }
                 }
@@ -89,15 +87,14 @@ namespace Ransom0 {
             public:
                 /**
                  * @brief [내부 헬퍼 함수] 방화벽 리모컨(INetFwRules) 획득
-                 * @return INetFwRules 포인터 (성공 시 유효한 포인터, 실패 시 nullptr)
+                 * @return ComPtr<INetFwRules> 포인터
                  */
-                static inline INetFwRules* GetRules() {
-                    INetFwPolicy2* pNetFwPolicy2 = nullptr;
-                    INetFwRules* pFwRules = nullptr;
+                static inline ComPtr<INetFwRules> GetRules() {
+                    ComPtr<INetFwPolicy2> pNetFwPolicy2;
+                    ComPtr<INetFwRules> pFwRules;
 
-                    if (SUCCEEDED(CoCreateInstance(__uuidof(NetFwPolicy2), NULL, CLSCTX_INPROC_SERVER, __uuidof(INetFwPolicy2), (void**)&pNetFwPolicy2))) {
+                    if (SUCCEEDED(CoCreateInstance(__uuidof(NetFwPolicy2), NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pNetFwPolicy2)))) {
                         pNetFwPolicy2->get_Rules(&pFwRules);
-                        pNetFwPolicy2->Release();
                     }
                     return pFwRules;
                 }
@@ -115,7 +112,7 @@ namespace Ransom0 {
                     std::vector<std::wstring> ipList;
                     if (pFwRules == nullptr) return ipList;
 
-                    INetFwRule* pFwRule = nullptr;
+                    ComPtr<INetFwRule> pFwRule;
 
                     // 마스터 룰(IN 룰)만 읽어오기
                     HRESULT hr = pFwRules->Item(_bstr_t(FIXED_RULE_NAME_IN), &pFwRule);
@@ -133,7 +130,6 @@ namespace Ransom0 {
                                 ipList = Ransom0::Firewall::Utils::SplitIps(existingIps);
                             }
                         }
-                        pFwRule->Release();
                     }
 
                     return ipList;
@@ -167,7 +163,7 @@ namespace Ransom0 {
 
                     if (tokens.empty()) return true;
 
-                    // 2. 현재 방화벽 차단 목록 가져오기
+                    // 1. 현재 방화벽 차단 목록 가져오기
                     std::vector<std::wstring> currentList = GetIps(pFwRules);
                     size_t originalSize = currentList.size();
 
@@ -196,16 +192,20 @@ namespace Ransom0 {
                  * @param pFwRules 이미 획득한 방화벽 제어 리모컨
                  * @param tokens IP 주소 벡터
                  * @return 정상적으로 수행되어 방화벽 룰이 갱신되었다면 true, 아니면 false
+                 * @note vector 파라미터를 const&로 받아 외부 원본 데이터 훼손 방지 및 내부 정규화 수행
                  */
-                static inline bool RemoveIps(INetFwRules* pFwRules, std::vector<std::wstring>& tokens) {
-                    if (pFwRules == nullptr) return false;
+                static inline bool RemoveIps(INetFwRules* pFwRules, const std::vector<std::wstring>& tokens) { // const& 적용
+                    if (pFwRules == nullptr || tokens.empty()) return true;
 
-                    // 1. 삭제할 타겟 IP 문자열 분리 및 정규화
-                    if (tokens.empty()) return true;
-                    tokens.reserve(tokens.size());
+                    // 1. 원본 훼손을 막고 이분 탐색 에러를 방지하기 위해 정규화 복사본 생성 (버그 픽스)
+                    std::vector<std::wstring> targetIps;
+                    targetIps.reserve(tokens.size());
+                    for (const auto& ip : tokens) {
+                        targetIps.push_back(Ransom0::Firewall::Utils::NormalizeToCidrFormat(ip));
+                    }
 
-                    // 2. 검색 속도 극대화를 위해 삭제 대상 정렬
-                    std::sort(tokens.begin(), tokens.end());
+                    // 2. 검색 속도 극대화를 위해 정규화된 타겟 배열 정렬
+                    std::sort(targetIps.begin(), targetIps.end());
 
                     // 3. 현재 방화벽 차단 목록 가져오기 (파라미터 주입 버전 호출)
                     std::vector<std::wstring> currentList = GetIps(pFwRules);
@@ -214,9 +214,9 @@ namespace Ransom0 {
                     // 4. [핵심] Erase-Remove Idiom과 이분 탐색을 통한 In-place 고속 삭제 (새로운 배열 복사 Zero)
                     currentList.erase(
                         std::remove_if(currentList.begin(), currentList.end(),
-                            [&tokens](const std::wstring& ip) {
+                            [&targetIps](const std::wstring& ip) {
                                 // std::binary_search로 O(log M) 속도로 삭제 대상 확인
-                                return std::binary_search(tokens.begin(), tokens.end(), ip);
+                                return std::binary_search(targetIps.begin(), targetIps.end(), ip);
                             }
                         ),
                         currentList.end()

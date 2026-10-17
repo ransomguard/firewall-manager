@@ -45,8 +45,9 @@ namespace Ransom0 {
                         // 3. substr 복사 없이 즉시 std::wstring 생성 (Zero-Copy 형변환)
                         std::wstring wline(line.begin() + start, line.begin() + end + 1);
 
-                        // 4. SplitIps로 콤마 분리 후 리턴된 배열 받기
-                        whitelist = Ransom0::Firewall::Utils::SplitIps(wline);
+                        // [버그 픽스] '=' 덮어쓰기 방지 및 파일의 모든 줄을 누적(insert) 하도록 수정
+                        std::vector<std::wstring> parts = Ransom0::Firewall::Utils::SplitIps(wline);
+                        whitelist.insert(whitelist.end(), parts.begin(), parts.end());
                     }
 
                     fclose(file);
@@ -125,15 +126,19 @@ namespace Ransom0 {
                  * @param whitelist 기존 화이트리스트 배열 (참조(&)로 전달받아 직접 수정)
                  * @param tokens IP 주소 벡터
                  * @return 실제로 새롭게 추가된 IP가 하나라도 있다면 true, 없으면 false
+                 * @note vector 파라미터를 const&로 받아 외부 원본 데이터 훼손 방지 및 내부 정규화 수행
                  */
-                static inline bool AddIps(std::vector<std::wstring>& whitelist, std::vector<std::wstring> tokens) {
+                static inline bool AddIps(std::vector<std::wstring>& whitelist, const std::vector<std::wstring>& tokens) {
                     if (tokens.empty()) return false;
 
                     // 1. 변경 여부 확인을 위해 삽입 전 원래 배열 크기 저장
                     size_t originalSize = whitelist.size();
 
                     // 2. 루프를 돌며 find 하지 않고, 배열 끝에 일괄 통째로 이어 붙이기 (Bulk Insert)
-                    whitelist.insert(whitelist.end(), tokens.begin(), tokens.end());
+                    // [버그 픽스] 화이트리스트에 새 IP를 넣을 때도 반드시 정규화(CIDR 변환) 수행
+                    for (const auto& ip : tokens) {
+                        whitelist.push_back(Ransom0::Firewall::Utils::NormalizeToCidrFormat(ip));
+                    }
 
                     // 3. 전체 정렬 후 중복된 요소 일괄 삭제 (Sort & Erase Unique 패턴)
                     std::sort(whitelist.begin(), whitelist.end());
@@ -148,22 +153,29 @@ namespace Ransom0 {
                  * @param whitelist 기존 화이트리스트 배열 (참조(&)로 전달받아 직접 수정)
                  * @param tokens IP 주소 벡터
                  * @return 실제로 삭제된 IP가 하나라도 있다면 true, 없으면 false
+                 * @note vector 파라미터를 const&로 받아 외부 원본 데이터 훼손 방지 및 내부 정규화 수행
                  */
-                static inline bool RemoveIps(std::vector<std::wstring>& whitelist, std::vector<std::wstring> tokens) {
+                static inline bool RemoveIps(std::vector<std::wstring>& whitelist, const std::vector<std::wstring>& tokens) {
                     if (tokens.empty()) return false;
 
                     // 1. 변경 여부 확인을 위해 삭제 전 원래 크기 저장
                     size_t originalSize = whitelist.size();
 
                     // 2. 검색 속도 극대화를 위해 삭제 대상(tokens)을 정렬
-                    std::sort(tokens.begin(), tokens.end()); 
+                    // [버그 픽스] 삭제 대상(tokens) 복사 및 정규화
+                    std::vector<std::wstring> targetIps;
+                    targetIps.reserve(tokens.size());
+                    for (const auto& ip : tokens) {
+                        targetIps.push_back(Ransom0::Firewall::Utils::NormalizeToCidrFormat(ip));
+                    }
+                    std::sort(targetIps.begin(), targetIps.end()); 
 
-                    // 3. [핵심] Erase-Remove Idiom 적용 (새로운 배열 복사 없이 제자리에서 고속 삭제)
+                    // 3. [핵심] Erase-Remove Idiom 적용 (새로운 배열 복사 없이 제자리에서 고속 삭제
                     whitelist.erase(
                         std::remove_if(whitelist.begin(), whitelist.end(),
-                            [&tokens](const std::wstring& ip) {
+                            [&targetIps](const std::wstring& ip) {
                                 // std::binary_search(이분 탐색)를 사용하여 O(log M) 속도로 삭제 대상인지 확인
-                                return std::binary_search(tokens.begin(), tokens.end(), ip);
+                                return std::binary_search(targetIps.begin(), targetIps.end(), ip);
                             }
                         ),
                         whitelist.end()

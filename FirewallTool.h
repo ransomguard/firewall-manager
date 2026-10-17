@@ -17,12 +17,12 @@ namespace Ransom0 {
             inline std::vector<std::wstring> GetIps() {
                 std::vector<std::wstring> ipList;
 
-                // 이미 만들어둔 GetRules()를 재사용하여 코드 중복 제거
-                INetFwRules* pRules = Firewall::Core::Block::GetRules();
+                // ComPtr로 안전하게 리모컨을 가져옵니다.
+                auto pRules = Firewall::Core::Block::GetRules();
 
                 if (pRules != nullptr) {
-                    ipList = Firewall::Core::Block::GetIps(pRules); // 위에서 만든 파라미터 버전 호출
-                    pRules->Release(); // 작업 완료 후 리모컨 반납
+                    // .Get()으로 생포인터를 전달합니다.
+                    ipList = Firewall::Core::Block::GetIps(pRules.Get());
                 }
 
                 return ipList;
@@ -34,13 +34,10 @@ namespace Ransom0 {
              */
             inline bool Clear() {
                 bool success = false;
-
-                // 이미 만들어둔 GetRules()를 재사용하여 COM 초기화 중복을 완벽히 제거
-                INetFwRules* pRules = Firewall::Core::Block::GetRules();
+                auto pRules = Firewall::Core::Block::GetRules();
 
                 if (pRules != nullptr) {
-                    success = Firewall::Core::Block::Clear(pRules);
-                    pRules->Release(); // 작업 완료 후 리모컨 반납
+                    success = Firewall::Core::Block::Clear(pRules.Get());
                 }
 
                 return success;
@@ -52,8 +49,8 @@ namespace Ransom0 {
              * @return 정상적으로 수행되어 방화벽 룰이 갱신되었다면 true, 아니면 false
              */
             inline bool AddIps(const std::wstring& ips) {
-                INetFwRules* pRules = Firewall::Core::Block::GetRules();
-                if (!pRules) return false;
+                auto pRules = Firewall::Core::Block::GetRules();
+                if (pRules == nullptr) return false;
 
                 auto whitelist = Firewall::Core::Whitelist::Load();
 
@@ -66,9 +63,8 @@ namespace Ransom0 {
                         validNewIps.push_back(ip);
                     }
                 }
-                bool result = Firewall::Core::Block::AddIps(pRules, validNewIps);
 
-                pRules->Release();
+                bool result = Firewall::Core::Block::AddIps(pRules.Get(), validNewIps);
                 return result;
             }
 
@@ -78,16 +74,12 @@ namespace Ransom0 {
              * @return 정상적으로 수행되어 방화벽 룰이 갱신되었다면 true, 아니면 false
              */
             inline bool RemoveIps(const std::wstring& removeIps) {
-                // 무거운 COM 리모컨 획득을 딱 한 번만 수행
-                INetFwRules* pRules = Firewall::Core::Block::GetRules();
-                if (!pRules) return false;
+                auto pRules = Firewall::Core::Block::GetRules();
+                if (pRules == nullptr) return false;
 
                 // 핵심 엔진 호출
                 std::vector<std::wstring> tokens = Ransom0::Firewall::Utils::SplitIps(removeIps);
-                bool result = Firewall::Core::Block::RemoveIps(pRules, tokens);
-
-                // 리모컨 반납
-                pRules->Release();
+                bool result = Firewall::Core::Block::RemoveIps(pRules.Get(), tokens);
 
                 return result;
             }
@@ -129,9 +121,11 @@ namespace Ransom0 {
                     if (success) {
                         // 화이트리스트에 새 IP 또는 범위가 추가되었으므로, 차단 목록에서 해당하는 IP 제거
                         auto rules = Firewall::Core::Block::GetRules();
-                        auto blockedIps = Firewall::Core::Block::GetIps(rules);
-                        auto removeIps = Firewall::Utils::FilterMatchingIps(blockedIps, list);
-                        Firewall::Core::Block::RemoveIps(rules, removeIps);
+                        if (rules != nullptr) { // 널 체크 추가
+                            auto blockedIps = Firewall::Core::Block::GetIps(rules.Get());
+                            auto removeIps = Firewall::Utils::FilterMatchingIps(blockedIps, list);
+                            Firewall::Core::Block::RemoveIps(rules.Get(), removeIps);
+                        }
                     }
                     return success;
                 }
