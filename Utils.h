@@ -47,7 +47,8 @@ namespace Ransom0 {
                     return -1;
                 }
 
-                unsigned long mask = (a << 24) | (b << 16) | (c << 8) | d;
+                // Signed Int 비트 시프트 오버플로우(UB)를 방지하기 위해 시프트 전 명시적 캐스팅 적용
+                unsigned long mask = ((unsigned long)a << 24) | ((unsigned long)b << 16) | ((unsigned long)c << 8) | (unsigned long)d;
                 int cidr = 0;
 
                 // 3. 최상위 비트(MSB)부터 1의 개수 카운팅

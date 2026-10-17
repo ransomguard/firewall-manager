@@ -1,5 +1,6 @@
 #pragma once        // 중복 정의 에러 차단
 
+#include <windows.h>      // GetModuleFileNameW, MAX_PATH
 #include <string>         // std::wstring
 #include <vector>         // std::vector
 #include <algorithm>      // std::find
@@ -13,6 +14,21 @@ namespace Ransom0 {
             private:
                 static constexpr const wchar_t* const WHITELIST_FILE = L"whitelist.txt";
 
+                // 절대 경로 헬퍼 함수
+                static inline std::wstring GetWhitelistPath() {
+                    wchar_t path[MAX_PATH] = { 0 };
+                    GetModuleFileNameW(NULL, path, MAX_PATH);
+
+                    std::wstring strPath(path);
+                    size_t pos = strPath.find_last_of(L"\\/");
+
+                    if (pos != std::wstring::npos) {
+                        return strPath.substr(0, pos + 1) + WHITELIST_FILE; // 실행 파일 디렉토리 + 파일명
+                    }
+
+                    return WHITELIST_FILE; // Fallback
+                }
+
             public:
                 /**
                  * @brief [화이트리스트] 파일에서 화이트리스트 IP 목록 읽기 및 자동 정규화
@@ -23,7 +39,7 @@ namespace Ransom0 {
                     FILE* file = nullptr;
 
                     // 1. 와이드 문자열(UTF-16) 경로를 지원하는 _wfopen_s 사용
-                    if (_wfopen_s(&file, WHITELIST_FILE, L"rt") != 0 || file == nullptr) {
+                    if (_wfopen_s(&file, GetWhitelistPath().c_str(), L"rt") != 0 || file == nullptr) {
                         return whitelist;
                     }
 
@@ -74,15 +90,14 @@ namespace Ransom0 {
                     }
 
                     FILE* file = nullptr;
-
+                    
                     // 1. ofstream 대신 가볍고 빠른 C 표준 API 사용
-                    if (_wfopen_s(&file, WHITELIST_FILE, L"wt") != 0 || file == nullptr) {
+                    if (_wfopen_s(&file, GetWhitelistPath().c_str(), L"wt") != 0 || file == nullptr) {
                         return false;
                     }
 
                     // 2. 스택(Stack) 버퍼 재사용 (동적 할당 Zero)
-                    // IP 형식의 최대 길이(예: "255.255.255.255/255.255.255.255\n\0")는 33자이므로 64바이트면 아주 넉넉함
-                    char buffer[64];
+                    char buffer[128];
 
                     for (const auto& ip : whitelist) {
                         std::wstring denormalized = Ransom0::Firewall::Utils::NormalizeToCidrFormat(ip);
