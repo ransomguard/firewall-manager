@@ -1,16 +1,15 @@
-#pragma once        // 중복 정의 에러 차단
-
-#include <iostream>
 #include <windows.h>
 
-// 권한 검사를 위해 Advapi32 라이브러리 링크
+#include "permission.h"
+
 #pragma comment(lib, "Advapi32.lib")
+
+
 
 namespace Ransom0 {
     namespace Firewall {
         namespace Permission {
-            // 방화벽 제어 권한(관리자 또는 네트워크 구성 연산자) 보유 여부를 확인하는 함수
-            inline bool HasFirewallControl() {
+            bool HasFirewallControl() {
                 BOOL bIsAdmin = FALSE;
                 BOOL bIsNetConfigOp = FALSE;
 

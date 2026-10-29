@@ -62,7 +62,3 @@ cmake_install.cmake
 # =========================
 .DS_Store
 Thumbs.db
-
-
-
-whitelist.txt
