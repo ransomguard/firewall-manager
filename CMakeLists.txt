@@ -6,10 +6,15 @@ project(Ransom0_Firewall LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 🎯 실행 파일(.exe)이 생성되는 출력 위치를 프로젝트 루트로 강제 고정
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}")
+# 🎯 실행 파일(.exe)이 생성되는 출력 위치를 bin/ 폴더로 고정
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+
+# 🎯 디버그 심볼 파일(.pdb)은 bin/ 대신 기본 빌드 디렉토리(build/) 하위에 생성
+set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+set(CMAKE_PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}")
+set(CMAKE_PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}")
 
 # 3. 코어 모듈 라이브러리화 (컴파일 최적화)
 # src 안의 파일들을 CLI와 Daemon에서 두 번 컴파일하지 않도록 하나의 정적 라이브러리로 묶습니다.
@@ -43,9 +48,9 @@ endif()
 # ==============================================================
 
 # 타겟 1: CLI
-add_executable(Ransom0_Firewall_CLI main_cli.cpp)
-target_link_libraries(Ransom0_Firewall_CLI PRIVATE FirewallCore)
+add_executable(r0-fw-cli main/cli.cpp)
+target_link_libraries(r0-fw-cli PRIVATE FirewallCore)
 
 # 타겟 2: 백그라운드 통신 데몬
-add_executable(Ransom0_Firewall_Daemon main_daemon.cpp)
-target_link_libraries(Ransom0_Firewall_Daemon PRIVATE FirewallCore)
+add_executable(r0-fw-daemon main/daemon.cpp)
+target_link_libraries(r0-fw-daemon PRIVATE FirewallCore)

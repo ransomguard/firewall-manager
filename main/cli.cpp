@@ -25,15 +25,15 @@ int main(int argc, char* argv[]) {
     }
 
     if (argc < 2) {
-        std::cout << "Usage: Ransom0_Firewall_CLI.exe [whitelist_target_1] [whitelist_target_2] ...\n";
+        std::cout << "Usage: r0-fw-cli.exe [whitelist_target_1] [whitelist_target_2] ...\n";
         std::cout << "Examples:\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.1 fd00::1\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.1:8080 [fd00::1]:8443\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.0/24 10.0.0.0/8 fd00::/64\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.0/24:22 [fd00::/64]:8080\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe example.com example.com:443\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe 8080 *:8080\n";
-        std::cout << "  Ransom0_Firewall_CLI.exe https://api.github.com/v1 http://192.168.1.1:8080/path\n";
+        std::cout << "  r0-fw-cli.exe 192.168.0.1 fd00::1\n";
+        std::cout << "  r0-fw-cli.exe 192.168.0.1:8080 [fd00::1]:8443\n";
+        std::cout << "  r0-fw-cli.exe 192.168.0.0/24 10.0.0.0/8 fd00::/64\n";
+        std::cout << "  r0-fw-cli.exe 192.168.0.0/24:22 [fd00::/64]:8080\n";
+        std::cout << "  r0-fw-cli.exe example.com example.com:443\n";
+        std::cout << "  r0-fw-cli.exe 8080 *:8080\n";
+        std::cout << "  r0-fw-cli.exe https://api.github.com/v1 http://192.168.1.1:8080/path\n";
         WSACleanup();
         return 1;
     }
@@ -55,8 +55,6 @@ int main(int argc, char* argv[]) {
             if (r.port != 0) std::cout << ", Port: " << r.port;
             std::cout << ")\n";
 
-            // 도메인일 경우 해석된 IPv4, IPv6 목록을 서브 트리로 출력
-            // CIDR일 경우 해석된 주소 목록 출력
             if (r.type == "domain" || r.type == "url") {
                 for (const auto& ip : r.resolvedIpv4) {
                     std::cout << "   => [IPv4] " << ip << "\n";
@@ -76,7 +74,6 @@ int main(int argc, char* argv[]) {
         std::cout << "============================================\n";
 
         // 무한 대기 (Ctrl+C로 종료)
-        // 스레드를 Blocking 상태로 만들어 CPU 점유율 0%로 프로세스 생명만 유지
         std::promise<void>().get_future().wait();
         fwManager.Disable();
     }

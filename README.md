@@ -35,17 +35,17 @@
 ## Usage
 
 > [!NOTE]
-> 빌드 시 `Ransom0_Firewall_CLI.exe`와 `Ransom0_Firewall_Daemon.exe` 파일이 생성됩니다.
+> 빌드 시 `r0-fw-cli.exe`와 `r0-fw-daemon.exe` 파일이 생성됩니다.
 
 ### CLI
 
 파일 실행 시 전체 네트워크가 차단되며, 인자로 전달된 대상들을 화이트리스트로 설정합니다.
 `Ctrl+c`를 눌러 종료할 때까지 대기하며, 종료 시 네트워크 차단을 해제합니다.
 
-Usage: `Ransom0_Firewall_CLI.exe [target_1] [target_2] ...`
+Usage: `r0-fw-cli.exe [target_1] [target_2] ...`
 
 ```powershell
-Ransom0_Firewall_CLI.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
+r0-fw-cli.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
 ```
 
 ### Daemon
@@ -61,14 +61,14 @@ Whitelist 구성 값은 데몬을 종료할 때까지 메모리에 저장되며 
 비활성화된 후 변경된 값은 on 시 Whitelist가 구성되지 않을 때 적용됩니다.
 
 ```powershell
-Ransom0_Firewall_Daemon.exe
+r0-fw-daemon.exe
 ```
 
 CLI처럼 초기 값을 구성할 수도 있습니다.
 초기 값을 구성할 경우 차단이 기본적으로 활성화됩니다.
 
 ```powershell
-Ransom0_Firewall_Daemon.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
+r0-fw-daemon.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
 ```
 
 #### on

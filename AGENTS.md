@@ -27,8 +27,8 @@
 * `src/permission.h` & `src/permission.cpp`: 네트워크 제어 권한(Administrator, Network Configuration Operators) 검증 로직. WFP API 접근 전 권한 확인 수행.
 * `src/utils.h` & `src/utils.cpp`: 순수 유틸리티 (IP/CIDR 파싱, URL 해석, `SplitHostAndPort`, 단일 DNS 질의(`AF_UNSPEC`)). 상태를 가지지 않는 순수 정적(Static) 함수 위주로 구성.
 * `src/firewall.h` & `src/firewall.cpp`: WFP 제어 및 핵심 비즈니스 로직. `WhitelistRecord` 데이터 모델 및 WFP 동적 세션 관리.
-* `main_cli.cpp`: 단발성 기능 테스트를 위한 CLI 진입점. (WFP 동적 세션 유지를 위해 실행 후 프로세스가 대기(block) 상태를 유지하도록 구현)
-* `main_daemon.cpp`: Named Pipe (`\\.\pipe\Ransom0_Firewall`) 서버를 구동하고 이벤트 루프를 처리하는 백그라운드 서비스 진입점.
+* `main/cli.cpp` (`bin/r0-fw-cli.exe`): 단발성 기능 테스트를 위한 CLI 진입점. (WFP 동적 세션 유지를 위해 실행 후 프로세스가 대기(block) 상태를 유지하도록 구현)
+* `main/daemon.cpp` (`bin/r0-fw-daemon.exe`): Named Pipe (`\\.\pipe\Ransom0_Firewall`) 서버를 구동하고 이벤트 루프를 처리하는 백그라운드 서비스 진입점.
 
 ## 4. WFP (Windows Filtering Platform) API & Dual-Stack 원칙
 
@@ -43,7 +43,7 @@
 
 * Named Pipe 이름: `\\.\pipe\Ransom0_Firewall`
 * 일반 권한 클라이언트 접근을 위해 SDDL `D:P(A;;GA;;;WD)` 보안 디스크립터를 적용합니다.
-* **Action 통합 처리 원칙:** `main_daemon.cpp` 내에서 `on`, `set`, `refresh` 등 공통 화이트리스트 갱신 로직을 중복 복사하지 말고 단일 제어 흐름으로 통합 처리하십시오.
+* **Action 통합 처리 원칙:** `main/daemon.cpp` 내에서 `on`, `set`, `refresh` 등 공통 화이트리스트 갱신 로직을 중복 복사하지 말고 단일 제어 흐름으로 통합 처리하십시오.
 * **상태 전이 규칙:**
   * `on`: 차단이 꺼져 있으면 활성화하며, 응답 `active`는 항상 `true`입니다. 인자가 없으면 마지막 저장된 구성을 적용합니다.
   * `set`: **차단이 비활성화된 상태일 경우 자동으로 활성화하지 않으며, 기존 `active` 상태를 유지합니다.** `whitelist` 키가 생략되면 `refresh`와 동일하게 동작합니다.
