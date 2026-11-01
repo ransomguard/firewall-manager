@@ -28,7 +28,7 @@
 * `src/utils.h` & `src/utils.cpp`: 순수 유틸리티 (IP 파싱, 타입 변환 등). 상태를 가지지 않는 정적(Static) 함수 위주로 구성.
 * `src/firewall.h` & `src/firewall.cpp`: WFP 제어 및 핵심 비즈니스 로직.
 * `main_cli.cpp`: 단발성 기능 테스트를 위한 CLI 진입점. (WFP 동적 세션 유지를 위해 실행 후 프로세스가 대기(block) 상태를 유지하도록 구현)
-* `main_daemon.cpp`: Electron 프론트엔드와 통신하기 위한 백그라운드 서비스 진입점. Named Pipe (`\\.\pipe\Ransom0Firewall`) 서버를 구동하고 이벤트 루프를 처리.
+* `main_daemon.cpp`: Electron 프론트엔드와 통신하기 위한 백그라운드 서비스 진입점. Named Pipe (`\\.\pipe\Ransom0_Firewall`) 서버를 구동하고 이벤트 루프를 처리.
 
 ## 4. WFP (Windows Filtering Platform) API 원칙
 
