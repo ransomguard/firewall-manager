@@ -38,13 +38,50 @@ int main(int argc, char* argv[]) {
     auto printWhitelistLog = [](const std::string& prefix, const std::vector<Ransom0::Firewall::WhitelistRecord>& records) {
         std::cout << prefix << " 예외 대상: " << records.size() << "개\n";
         for (const auto& r : records) {
-            std::cout << "  - " << r.value << " (" << r.type << ")\n";
-            if (r.type == "domain") {
+            std::cout << "  - " << r.value << " (" << r.type;
+            if (r.port != 0) std::cout << ", Port: " << r.port;
+            std::cout << ")\n";
+
+            if (r.type == "domain" || r.type == "url") {
                 for (const auto& ip : r.resolvedIpv4) std::cout << "    => [IPv4] " << ip << "\n";
                 for (const auto& ip : r.resolvedIpv6) std::cout << "    => [IPv6] " << ip << "\n";
+            } else if (r.type == "ipv4") {
+                std::cout << "    => [IPv4] " << r.ip << "/" << static_cast<int>(r.cidr) << "\n";
+            } else if (r.type == "ipv6") {
+                std::cout << "    => [IPv6] " << r.ip << "/" << static_cast<int>(r.cidr) << "\n";
             }
         }
         std::cout << std::endl;
+    };
+
+    // ==========================================
+    // WhitelistRecord 목록을 JSON 캐시 상태로 변환하는 람다 함수
+    // ==========================================
+    auto recordsToJson = [](const std::vector<Ransom0::Firewall::WhitelistRecord>& records) {
+        nlohmann::json state = nlohmann::json::array();
+        for (const auto& r : records) {
+            nlohmann::json item;
+            item["value"] = r.value;
+            item["type"] = r.type;
+
+            nlohmann::json data = nlohmann::json::object();
+            data["port"] = r.port;
+            if (r.type == "ipv4") {
+                data["ipv4"] = r.ip;
+                data["cidr"] = r.cidr;
+            } else if (r.type == "ipv6") {
+                data["ipv6"] = r.ip;
+                data["cidr"] = r.cidr;
+            } else if (r.type == "domain" || r.type == "url") {
+                data["domain"] = r.domain;
+                data["ipv4"] = r.resolvedIpv4;
+                data["ipv6"] = r.resolvedIpv6;
+            }
+            item["data"] = data;
+
+            state.push_back(item);
+        }
+        return state;
     };
 
     // 일반 권한 클라이언트도 관리자 파이프에 접근할 수 있도록 권한 개방
@@ -64,10 +101,10 @@ int main(int argc, char* argv[]) {
         sa.bInheritHandle = FALSE;
     }
 
-    // CLI 인자가 주어졌다면 즉시 방화벽을 ON 시키고 루프 진입
+    // CLI 인자가 주어졌다면 기본적으로 차단을 활성화하고 초기 화이트리스트 구성
     if (argc > 1) {
         std::cout << "[+] CLI 인자 감지됨. 초기 화이트리스트 구성을 시작합니다...\n";
-        
+
         for (int i = 1; i < argc; ++i) {
             globalRawTargets.push_back(argv[i]);
         }
@@ -76,17 +113,7 @@ int main(int argc, char* argv[]) {
         fwManager.Enable();
         fwManager.setWhitelist(globalRawTargets, &records);
 
-        cachedWhitelistState.clear();
-        for (const auto& r : records) {
-            nlohmann::json item;
-            item["value"] = r.value;
-            item["type"] = r.type;
-            if (r.type == "domain") {
-                item["ipv4"] = r.resolvedIpv4;
-                item["ipv6"] = r.resolvedIpv6;
-            }
-            cachedWhitelistState.push_back(item);
-        }
+        cachedWhitelistState = recordsToJson(records);
         printWhitelistLog("[+] 방화벽 ON (CLI 초기화).", records);
     }
 
@@ -130,20 +157,10 @@ int main(int argc, char* argv[]) {
                             fwManager.setWhitelist(globalRawTargets, &records);
 
                             // 4. 반환된 C++ 구조체를 JSON 객체로 변환하여 캐시에 덮어쓰기
-                            cachedWhitelistState.clear();
-                            for (const auto& r : records) {
-                                nlohmann::json item;
-                                item["value"] = r.value;
-                                item["type"] = r.type;
-                                if (r.type == "domain") {
-                                    item["ipv4"] = r.resolvedIpv4;
-                                    item["ipv6"] = r.resolvedIpv6;
-                                }
-                                cachedWhitelistState.push_back(item);
-                            }
+                            cachedWhitelistState = recordsToJson(records);
 
                             response["success"] = true;
-                            response["active"] = fwManager.IsActive();
+                            response["active"] = (action == "on") ? true : fwManager.IsActive();
                             response["whitelist"] = cachedWhitelistState;
 
                             if (action == "on") {
@@ -164,7 +181,7 @@ int main(int argc, char* argv[]) {
                             std::cout << "[+] 방화벽 OFF. 롤백 완료.\n\n";
                             response["success"] = true;
                             response["active"] = false;
-                        } 
+                        }
                         else {
                             response.erase("action");
                             response["success"] = false;

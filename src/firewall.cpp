@@ -2,11 +2,158 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <fwpmu.h>
+#include <cstring>
 
 #include "firewall.h"
 #include "utils.h"
 
 #pragma comment(lib, "Fwpuclnt.lib")
+
+
+
+namespace {
+    // 공통 WFP 필터 등록 헬퍼
+    void AddFilter(HANDLE engineHandle, const GUID& layerKey, FWP_ACTION_TYPE actionType, const wchar_t* name,
+                   FWPM_FILTER_CONDITION0* conditions = nullptr, UINT32 numConditions = 0,
+                   std::vector<UINT64>* outFilterIds = nullptr) {
+        FWPM_FILTER0 filter = { 0 };
+        filter.layerKey = layerKey;
+        filter.action.type = actionType;
+        filter.weight.type = FWP_EMPTY;
+        filter.numFilterConditions = numConditions;
+        filter.filterCondition = conditions;
+        filter.displayData.name = const_cast<wchar_t*>(name);
+
+        UINT64 filterId = 0;
+        if (FwpmFilterAdd0(engineHandle, &filter, NULL, &filterId) == ERROR_SUCCESS) {
+            if (outFilterIds) {
+                outFilterIds->push_back(filterId);
+            }
+        }
+    }
+
+    // 포트 조건 설정 헬퍼
+    void SetPortCondition(FWPM_FILTER_CONDITION0& cond, uint16_t port) {
+        cond.fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
+        cond.matchType = FWP_MATCH_EQUAL;
+        cond.conditionValue.type = FWP_UINT16;
+        cond.conditionValue.uint16 = port;
+    }
+
+    // IPv4 단일 IP 허용 필터 등록
+    void AddIpv4Filter(HANDLE engineHandle, uint32_t ip, uint16_t port, std::vector<UINT64>& filterIds) {
+        FWPM_FILTER_CONDITION0 cond[2] = { 0 };
+        cond[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+        cond[0].matchType = FWP_MATCH_EQUAL;
+        cond[0].conditionValue.type = FWP_UINT32;
+        cond[0].conditionValue.uint32 = ip;
+
+        UINT32 numConds = 1;
+        if (port != 0) {
+            SetPortCondition(cond[1], port);
+            numConds = 2;
+        }
+
+        AddFilter(engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWP_ACTION_PERMIT, L"Ransom0_Whitelist_V4", cond, numConds, &filterIds);
+    }
+
+    // IPv4 CIDR 대역 허용 필터 등록
+    void AddIpv4CidrFilter(HANDLE engineHandle, uint32_t ip, uint32_t mask, uint16_t port, std::vector<UINT64>& filterIds) {
+        FWP_V4_ADDR_AND_MASK v4Mask = { 0 };
+        v4Mask.addr = ip;
+        v4Mask.mask = mask;
+
+        FWPM_FILTER_CONDITION0 cond[2] = { 0 };
+        cond[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+        cond[0].matchType = FWP_MATCH_EQUAL;
+        cond[0].conditionValue.type = FWP_V4_ADDR_MASK;
+        cond[0].conditionValue.v4AddrMask = &v4Mask;
+
+        UINT32 numConds = 1;
+        if (port != 0) {
+            SetPortCondition(cond[1], port);
+            numConds = 2;
+        }
+
+        AddFilter(engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWP_ACTION_PERMIT, L"Ransom0_Whitelist_V4_CIDR", cond, numConds, &filterIds);
+    }
+
+    // IPv6 단일 IP 허용 필터 등록
+    void AddIpv6Filter(HANDLE engineHandle, const std::array<uint8_t, 16>& ip, uint16_t port, std::vector<UINT64>& filterIds) {
+        FWP_BYTE_ARRAY16 v6Addr = { 0 };
+        std::memcpy(v6Addr.byteArray16, ip.data(), 16);
+
+        FWPM_FILTER_CONDITION0 cond[2] = { 0 };
+        cond[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+        cond[0].matchType = FWP_MATCH_EQUAL;
+        cond[0].conditionValue.type = FWP_BYTE_ARRAY16_TYPE;
+        cond[0].conditionValue.byteArray16 = &v6Addr;
+
+        UINT32 numConds = 1;
+        if (port != 0) {
+            SetPortCondition(cond[1], port);
+            numConds = 2;
+        }
+
+        AddFilter(engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWP_ACTION_PERMIT, L"Ransom0_Whitelist_V6", cond, numConds, &filterIds);
+    }
+
+    // IPv6 CIDR 대역 허용 필터 등록
+    void AddIpv6CidrFilter(HANDLE engineHandle, const std::array<uint8_t, 16>& ip, uint8_t prefix, uint16_t port, std::vector<UINT64>& filterIds) {
+        FWP_V6_ADDR_AND_MASK v6Mask = { 0 };
+        std::memcpy(v6Mask.addr, ip.data(), 16);
+        v6Mask.prefixLength = prefix;
+
+        FWPM_FILTER_CONDITION0 cond[2] = { 0 };
+        cond[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+        cond[0].matchType = FWP_MATCH_EQUAL;
+        cond[0].conditionValue.type = FWP_V6_ADDR_MASK;
+        cond[0].conditionValue.v6AddrMask = &v6Mask;
+
+        UINT32 numConds = 1;
+        if (port != 0) {
+            SetPortCondition(cond[1], port);
+            numConds = 2;
+        }
+
+        AddFilter(engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWP_ACTION_PERMIT, L"Ransom0_Whitelist_V6_CIDR", cond, numConds, &filterIds);
+    }
+
+    // 전체 IP 대상 단독 포트 허용 필터 등록 (V4 및 V6 모두 허용)
+    void AddPortFilter(HANDLE engineHandle, uint16_t port, std::vector<UINT64>& filterIds) {
+        FWPM_FILTER_CONDITION0 cond = { 0 };
+        SetPortCondition(cond, port);
+
+        AddFilter(engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWP_ACTION_PERMIT, L"Ransom0_Whitelist_Port_V4", &cond, 1, &filterIds);
+        AddFilter(engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWP_ACTION_PERMIT, L"Ransom0_Whitelist_Port_V6", &cond, 1, &filterIds);
+    }
+
+    // 단일 IPv4 레코드 및 필터 처리 헬퍼
+    void ProcessIpv4Target(HANDLE engineHandle, uint32_t ip, uint16_t port,
+                           Ransom0::Firewall::WhitelistRecord& record, bool isActive,
+                           std::vector<UINT64>& filterIds) {
+        std::string strIp;
+        if (Ransom0::Firewall::Utils::Ipv4ToString(ip, strIp)) {
+            record.resolvedIpv4.push_back(strIp);
+        }
+        if (isActive) {
+            AddIpv4Filter(engineHandle, ip, port, filterIds);
+        }
+    }
+
+    // 단일 IPv6 레코드 및 필터 처리 헬퍼
+    void ProcessIpv6Target(HANDLE engineHandle, const std::array<uint8_t, 16>& ip, uint16_t port,
+                           Ransom0::Firewall::WhitelistRecord& record, bool isActive,
+                           std::vector<UINT64>& filterIds) {
+        std::string strIp;
+        if (Ransom0::Firewall::Utils::Ipv6ToString(ip, strIp)) {
+            record.resolvedIpv6.push_back(strIp);
+        }
+        if (isActive) {
+            AddIpv6Filter(engineHandle, ip, port, filterIds);
+        }
+    }
+}
 
 
 
@@ -21,7 +168,7 @@ namespace Ransom0 {
         Manager::Manager() : pImpl(std::make_unique<Impl>()) {}
 
         Manager::~Manager() {
-            Disable(); // 객체 소멸 시 자동 롤백 보장 (RAII)
+            Disable();
         }
 
         bool Manager::IsActive() const {
@@ -33,75 +180,34 @@ namespace Ransom0 {
             if (IsActive()) return false;
 
             FWPM_SESSION0 session = { 0 };
-            session.flags = FWPM_SESSION_FLAG_DYNAMIC; // 핵심: 프로세스 종료 시 자동 100% 롤백
+            session.flags = FWPM_SESSION_FLAG_DYNAMIC; // 프로세스 종료 시 자동 롤백
 
             // WFP 엔진 핸들 열기
-            DWORD result = FwpmEngineOpen0(NULL, RPC_C_AUTHN_WINNT, NULL, &session, &pImpl->engineHandle);
-            if (result != ERROR_SUCCESS) return false;
+            DWORD result = FwpmEngineOpen0(NULL, RPC_C_AUTHN_DEFAULT, NULL, &session, &pImpl->engineHandle);
+            if (result != ERROR_SUCCESS) {
+                pImpl->engineHandle = NULL;
+                return false;
+            }
 
-            // ==========================================
-            // 1. 방패 (Block All) - 조건 0개 (가장 낮은 우선순위)
-            // ==========================================
-            // IPv4 아웃바운드 차단
-            FWPM_FILTER0 blockFilterV4 = { 0 };
-            blockFilterV4.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-            blockFilterV4.action.type = FWP_ACTION_BLOCK;
-            blockFilterV4.weight.type = FWP_EMPTY; // WFP 자동 가중치 사용
-            blockFilterV4.displayData.name = (wchar_t*)L"Ransom0_BlockAll_V4";
-            FwpmFilterAdd0(pImpl->engineHandle, &blockFilterV4, NULL, NULL);
+            // 1. 아웃바운드 전체 차단 필터 (V4 / V6)
+            AddFilter(pImpl->engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWP_ACTION_BLOCK, L"Ransom0_Block_All_V4");
+            AddFilter(pImpl->engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWP_ACTION_BLOCK, L"Ransom0_Block_All_V6");
 
-            // IPv6 아웃바운드 차단
-            FWPM_FILTER0 blockFilterV6 = { 0 };
-            blockFilterV6.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
-            blockFilterV6.action.type = FWP_ACTION_BLOCK;
-            blockFilterV6.weight.type = FWP_EMPTY; // WFP 자동 가중치 사용
-            blockFilterV6.displayData.name = (wchar_t*)L"Ransom0_BlockAll_V6";
-            FwpmFilterAdd0(pImpl->engineHandle, &blockFilterV6, NULL, NULL);
-
-            // ==========================================
-            // 2. DNS 허용 (UDP 53) - 조건 2개 (가장 높은 우선순위)
-            // ==========================================
-            FWPM_FILTER_CONDITION0 dnsCond[2] = { 0 };
-            // 프로토콜 = UDP
-            dnsCond[0].fieldKey = FWPM_CONDITION_IP_PROTOCOL;
-            dnsCond[0].matchType = FWP_MATCH_EQUAL;
-            dnsCond[0].conditionValue.type = FWP_UINT8;
-            dnsCond[0].conditionValue.uint8 = IPPROTO_UDP;
-            // 원격 포트 = 53
-            dnsCond[1].fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
-            dnsCond[1].matchType = FWP_MATCH_EQUAL;
-            dnsCond[1].conditionValue.type = FWP_UINT16;
-            dnsCond[1].conditionValue.uint16 = 53;
-
-            // IPv4 DNS 허용
-            FWPM_FILTER0 dnsFilterV4 = { 0 };
-            dnsFilterV4.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-            dnsFilterV4.action.type = FWP_ACTION_PERMIT;
-            dnsFilterV4.weight.type = FWP_EMPTY; // WFP 자동 가중치 사용
-            dnsFilterV4.numFilterConditions = 2;
-            dnsFilterV4.filterCondition = dnsCond;
-            dnsFilterV4.displayData.name = (wchar_t*)L"Ransom0_AllowDNS_V4";
-
-            FwpmFilterAdd0(pImpl->engineHandle, &dnsFilterV4, NULL, NULL);
-
-            // IPv6 DNS 허용
-            FWPM_FILTER0 dnsFilterV6 = { 0 };
-            dnsFilterV6.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
-            dnsFilterV6.action.type = FWP_ACTION_PERMIT;
-            dnsFilterV6.weight.type = FWP_EMPTY; // WFP 자동 가중치 사용
-            dnsFilterV6.numFilterConditions = 2;
-            dnsFilterV6.filterCondition = dnsCond;
-            dnsFilterV6.displayData.name = (wchar_t*)L"Ransom0_AllowDNS_V6";
-
-            FwpmFilterAdd0(pImpl->engineHandle, &dnsFilterV6, NULL, NULL);
+            // 2. DNS 허용 필터 (포트 53 허용)
+            FWPM_FILTER_CONDITION0 dnsCond = { 0 };
+            SetPortCondition(dnsCond, 53);
+            AddFilter(pImpl->engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWP_ACTION_PERMIT, L"Ransom0_Allow_DNS_V4", &dnsCond, 1);
+            AddFilter(pImpl->engineHandle, FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWP_ACTION_PERMIT, L"Ransom0_Allow_DNS_V6", &dnsCond, 1);
 
             return true;
         }
 
         bool Manager::setWhitelist(const std::vector<std::string>& whitelistTargets, std::vector<WhitelistRecord>* outRecords) {
-            const bool isActive = IsActive();
-            
-            // 방화벽이 켜져 있을 때만 기존 화이트리스트 필터 제거
+            if (outRecords) outRecords->clear();
+
+            bool isActive = IsActive();
+
+            // 기존에 등록된 화이트리스트 필터 제거
             if (isActive) {
                 for (UINT64 filterId : pImpl->whitelistFilterIds) {
                     FwpmFilterDeleteById0(pImpl->engineHandle, filterId);
@@ -109,98 +215,95 @@ namespace Ransom0 {
                 pImpl->whitelistFilterIds.clear();
             }
 
-            // 출력용 레코드 벡터 초기화
-            if (outRecords) outRecords->clear();
+            // 새로운 화이트리스트 목록 등록 및 파싱
+            for (const auto& rawTarget : whitelistTargets) {
+                std::string hostPart;
+                uint16_t port = 0;
 
-            // 입력값을 순회하며 IPv4 / IPv6 / 도메인 해석
-            for (const auto& targetStr : whitelistTargets) {
+                // 잘못된 형식은 스킵
+                if (!Utils::SplitHostAndPort(rawTarget, hostPart, port)) continue;
 
-                // 출력용 레코드 초기화
                 WhitelistRecord record;
-                if (outRecords) record.value = targetStr;
+                record.value = rawTarget;
+                record.port = port;
 
-                std::vector<uint32_t> ipv4List;
-                std::vector<std::array<uint8_t, 16>> ipv6List;
-                uint32_t singleIpv4 = 0;
-                std::array<uint8_t, 16> singleIpv6 = { 0 };
+                bool isUrl = (rawTarget.find("://") != std::string::npos);
 
-                // 1단계: 입력값이 순수 IPv4 문자열인지 검사
-                if (Utils::ParseIpv4(targetStr, singleIpv4)) {
-                    if (outRecords) record.type = "ipv4";
-                    ipv4List.push_back(singleIpv4);
-                }
-                // 2단계: 입력값이 순수 IPv6 문자열인지 검사
-                else if (Utils::ParseIpv6(targetStr, singleIpv6)) {
-                    if (outRecords) record.type = "ipv6";
-                    ipv6List.push_back(singleIpv6);
-                }
-                // 3단계: IP가 아니라면 도메인으로 간주하고 DNS 해석 (IPv4 + IPv6 모두 조회)
-                else {
-                    if (outRecords) record.type = "domain";
-                    Utils::ResolveDomainToIps(targetStr, ipv4List, ipv6List);
-                }
-
-                // 찾아낸 모든 IPv4에 대해 처리
-                for (uint32_t ipVal : ipv4List) {
-                    // 출력용 레코드에 해석된 IP 추가
-                    if (outRecords) {
-                        std::string strIp;
-                        if (Utils::Ipv4ToString(ipVal, strIp)) record.resolvedIpv4.push_back(strIp);
+                // 1단계: 단독 포트 지정 검사 (예: "*:8080" 또는 "8080")
+                if (hostPart == "*") {
+                    record.type = "port";
+                    if (isActive && port != 0) {
+                        AddPortFilter(pImpl->engineHandle, port, pImpl->whitelistFilterIds);
                     }
+                } else {
+                    uint32_t singleIpv4 = 0;
+                    uint32_t ipv4Mask = 0;
+                    std::array<uint8_t, 16> singleIpv6 = { 0 };
+                    uint8_t ipv6Prefix = 0;
 
-                    // 방화벽이 켜져 있을 때만 실제 WFP 커널 룰(바늘) 추가
-                    if (isActive) {
-                        FWPM_FILTER_CONDITION0 allowCond = { 0 };
-                        allowCond.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
-                        allowCond.matchType = FWP_MATCH_EQUAL;
-                        allowCond.conditionValue.type = FWP_UINT32;
-                        allowCond.conditionValue.uint32 = ipVal;
-
-                        FWPM_FILTER0 allowFilter = { 0 };
-                        allowFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
-                        allowFilter.action.type = FWP_ACTION_PERMIT;
-                        allowFilter.weight.type = FWP_EMPTY; // WFP 자동 가중치 사용
-                        allowFilter.numFilterConditions = 1;
-                        allowFilter.filterCondition = &allowCond;
-                        allowFilter.displayData.name = (wchar_t*)L"Ransom0_Whitelist_V4";
-
-                        UINT64 filterId = 0;
-                        if (FwpmFilterAdd0(pImpl->engineHandle, &allowFilter, NULL, &filterId) == ERROR_SUCCESS) {
-                            pImpl->whitelistFilterIds.push_back(filterId);
+                    // 2단계: IPv4 CIDR 대역 검사 (예: "192.168.0.0/24")
+                    if (Utils::ParseCidrV4(hostPart, singleIpv4, ipv4Mask)) {
+                        record.type = "ipv4";
+                        record.cidr = Utils::MaskToPrefixV4(ipv4Mask);
+                        Utils::Ipv4ToString(singleIpv4, record.ip);
+                        if (isActive) {
+                            AddIpv4CidrFilter(pImpl->engineHandle, singleIpv4, ipv4Mask, port, pImpl->whitelistFilterIds);
                         }
                     }
-                }
-
-                // 찾아낸 모든 IPv6에 대해 처리
-                for (const auto& ipv6Val : ipv6List) {
-                    // 출력용 레코드에 해석된 IP 추가
-                    if (outRecords) {
-                        std::string strIp;
-                        if (Utils::Ipv6ToString(ipv6Val, strIp)) record.resolvedIpv6.push_back(strIp);
+                    // 3단계: IPv6 CIDR 대역 검사 (예: "fd00::/64")
+                    else if (Utils::ParseCidrV6(hostPart, singleIpv6, ipv6Prefix)) {
+                        record.type = "ipv6";
+                        record.cidr = ipv6Prefix;
+                        Utils::Ipv6ToString(singleIpv6, record.ip);
+                        if (isActive) {
+                            AddIpv6CidrFilter(pImpl->engineHandle, singleIpv6, ipv6Prefix, port, pImpl->whitelistFilterIds);
+                        }
                     }
+                    // 4단계: 순수 단일 IPv4 검사 (예: "192.168.1.1")
+                    else if (Utils::ParseIpv4(hostPart, singleIpv4)) {
+                        if (isUrl) {
+                            record.type = "url";
+                            record.domain = hostPart;
+                            ProcessIpv4Target(pImpl->engineHandle, singleIpv4, port, record, isActive, pImpl->whitelistFilterIds);
+                        } else {
+                            record.type = "ipv4";
+                            record.cidr = 32;
+                            Utils::Ipv4ToString(singleIpv4, record.ip);
+                            if (isActive) {
+                                AddIpv4Filter(pImpl->engineHandle, singleIpv4, port, pImpl->whitelistFilterIds);
+                            }
+                        }
+                    }
+                    // 5단계: 순수 단일 IPv6 검사 (예: "fd00::1")
+                    else if (Utils::ParseIpv6(hostPart, singleIpv6)) {
+                        if (isUrl) {
+                            record.type = "url";
+                            record.domain = hostPart;
+                            ProcessIpv6Target(pImpl->engineHandle, singleIpv6, port, record, isActive, pImpl->whitelistFilterIds);
+                        } else {
+                            record.type = "ipv6";
+                            record.cidr = 128;
+                            Utils::Ipv6ToString(singleIpv6, record.ip);
+                            if (isActive) {
+                                AddIpv6Filter(pImpl->engineHandle, singleIpv6, port, pImpl->whitelistFilterIds);
+                            }
+                        }
+                    }
+                    // 6단계: 도메인 또는 URL (IPv4 + IPv6 동시 DNS 해석)
+                    else {
+                        record.type = isUrl ? "url" : "domain";
+                        record.domain = hostPart;
 
-                    // 방화벽이 켜져 있을 때만 실제 WFP 커널 룰(바늘) 추가
-                    if (isActive) {
-                        FWP_BYTE_ARRAY16 byteArray16 = { 0 };
-                        std::memcpy(byteArray16.byteArray16, ipv6Val.data(), 16);
+                        std::vector<uint32_t> ipv4List;
+                        std::vector<std::array<uint8_t, 16>> ipv6List;
 
-                        FWPM_FILTER_CONDITION0 allowCond = { 0 };
-                        allowCond.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
-                        allowCond.matchType = FWP_MATCH_EQUAL;
-                        allowCond.conditionValue.type = FWP_BYTE_ARRAY16_TYPE;
-                        allowCond.conditionValue.byteArray16 = &byteArray16;
+                        Utils::ResolveDomainToIps(hostPart, ipv4List, ipv6List);
 
-                        FWPM_FILTER0 allowFilter = { 0 };
-                        allowFilter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
-                        allowFilter.action.type = FWP_ACTION_PERMIT;
-                        allowFilter.weight.type = FWP_EMPTY; // WFP 자동 가중치 사용
-                        allowFilter.numFilterConditions = 1;
-                        allowFilter.filterCondition = &allowCond;
-                        allowFilter.displayData.name = (wchar_t*)L"Ransom0_Whitelist_V6";
-
-                        UINT64 filterId = 0;
-                        if (FwpmFilterAdd0(pImpl->engineHandle, &allowFilter, NULL, &filterId) == ERROR_SUCCESS) {
-                            pImpl->whitelistFilterIds.push_back(filterId);
+                        for (uint32_t ipVal : ipv4List) {
+                            ProcessIpv4Target(pImpl->engineHandle, ipVal, port, record, isActive, pImpl->whitelistFilterIds);
+                        }
+                        for (const auto& ipv6Val : ipv6List) {
+                            ProcessIpv6Target(pImpl->engineHandle, ipv6Val, port, record, isActive, pImpl->whitelistFilterIds);
                         }
                     }
                 }

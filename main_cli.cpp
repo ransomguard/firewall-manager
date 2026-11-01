@@ -25,7 +25,15 @@ int main(int argc, char* argv[]) {
     }
 
     if (argc < 2) {
-        std::cout << "Usage: firewall_cli [whitelist_ip_or_domain_1] [whitelist_ip_or_domain_2] ...\n";
+        std::cout << "Usage: Ransom0_Firewall_CLI.exe [whitelist_target_1] [whitelist_target_2] ...\n";
+        std::cout << "Examples:\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.1 fd00::1\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.1:8080 [fd00::1]:8443\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.0/24 10.0.0.0/8 fd00::/64\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe 192.168.0.0/24:22 [fd00::/64]:8080\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe example.com example.com:443\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe 8080 *:8080\n";
+        std::cout << "  Ransom0_Firewall_CLI.exe https://api.github.com/v1 http://192.168.1.1:8080/path\n";
         WSACleanup();
         return 1;
     }
@@ -43,16 +51,23 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "\n[ Whitelist Details ]\n";
         for (const auto& r : records) {
-            std::cout << " - " << r.value << " (" << r.type << ")\n";
-            
+            std::cout << " - " << r.value << " (" << r.type;
+            if (r.port != 0) std::cout << ", Port: " << r.port;
+            std::cout << ")\n";
+
             // 도메인일 경우 해석된 IPv4, IPv6 목록을 서브 트리로 출력
-            if (r.type == "domain") {
+            // CIDR일 경우 해석된 주소 목록 출력
+            if (r.type == "domain" || r.type == "url") {
                 for (const auto& ip : r.resolvedIpv4) {
                     std::cout << "   => [IPv4] " << ip << "\n";
                 }
                 for (const auto& ip : r.resolvedIpv6) {
                     std::cout << "   => [IPv6] " << ip << "\n";
                 }
+            } else if (r.type == "ipv4") {
+                std::cout << "   => [IPv4] " << r.ip << "/" << static_cast<int>(r.cidr) << "\n";
+            } else if (r.type == "ipv6") {
+                std::cout << "   => [IPv6] " << r.ip << "/" << static_cast<int>(r.cidr) << "\n";
             }
         }
         std::cout << "\n============================================\n";

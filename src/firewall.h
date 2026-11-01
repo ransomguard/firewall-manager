@@ -3,14 +3,21 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 
 
 namespace Ransom0 {
     namespace Firewall {
         struct WhitelistRecord {
-            std::string type;  // "ipv4", "ipv6", "domain"
-            std::string value; // 원본 입력 (예: "google.com")
+            std::string type;   // "ipv4", "ipv6", "domain", "url", "port"
+            std::string value;  // 원본 입력값
+
+            std::string ip;     // ipv4 또는 ipv6 주소 (정규화된 IP/네트워크 주소)
+            std::string domain; // domain 또는 url의 호스트
+            uint16_t port = 0;  // 0인 경우 포트 미지정
+            uint8_t cidr = 0;   // CIDR prefix (ipv4: 32, ipv6: 128)
+
             std::vector<std::string> resolvedIpv4;
             std::vector<std::string> resolvedIpv6;
         };
@@ -38,8 +45,9 @@ namespace Ransom0 {
 
             /**
              * @brief 화이트리스트 설정
-             * @param whitelistTargets 화이트리스트 대상 IP/도메인 문자열 벡터
-             * @return 성공 시 true, 실패 시(방화벽이 활성화되어 있지 않은 경우) false
+             * @param whitelistTargets 화이트리스트 대상 IP/도메인/CIDR/포트/URL 문자열 벡터
+             * @param outRecords 파싱 및 해석된 WhitelistRecord 목록 (선택)
+             * @return 성공 시 true
              */
             bool setWhitelist(const std::vector<std::string>& whitelistTargets, std::vector<WhitelistRecord>* outRecords = nullptr);
 

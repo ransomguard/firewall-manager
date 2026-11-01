@@ -25,25 +25,41 @@
 새로운 파일 추가 시에도 같은 구조로 생성하십시오.
 
 * `src/permission.h` & `src/permission.cpp`: 네트워크 제어 권한(Administrator, Network Configuration Operators) 검증 로직. WFP API 접근 전 권한 확인 수행.
-* `src/utils.h` & `src/utils.cpp`: 순수 유틸리티 (IP 파싱, 타입 변환 등). 상태를 가지지 않는 정적(Static) 함수 위주로 구성.
-* `src/firewall.h` & `src/firewall.cpp`: WFP 제어 및 핵심 비즈니스 로직.
+* `src/utils.h` & `src/utils.cpp`: 순수 유틸리티 (IP/CIDR 파싱, URL 해석, `SplitHostAndPort`, 단일 DNS 질의(`AF_UNSPEC`)). 상태를 가지지 않는 순수 정적(Static) 함수 위주로 구성.
+* `src/firewall.h` & `src/firewall.cpp`: WFP 제어 및 핵심 비즈니스 로직. `WhitelistRecord` 데이터 모델 및 WFP 동적 세션 관리.
 * `main_cli.cpp`: 단발성 기능 테스트를 위한 CLI 진입점. (WFP 동적 세션 유지를 위해 실행 후 프로세스가 대기(block) 상태를 유지하도록 구현)
-* `main_daemon.cpp`: Electron 프론트엔드와 통신하기 위한 백그라운드 서비스 진입점. Named Pipe (`\\.\pipe\Ransom0_Firewall`) 서버를 구동하고 이벤트 루프를 처리.
+* `main_daemon.cpp`: Named Pipe (`\\.\pipe\Ransom0_Firewall`) 서버를 구동하고 이벤트 루프를 처리하는 백그라운드 서비스 진입점.
 
-## 4. WFP (Windows Filtering Platform) API 원칙
+## 4. WFP (Windows Filtering Platform) API & Dual-Stack 원칙
 
 * **Dynamic Session Only:** 롤백의 완벽성을 위해 방화벽 엔진 핸들은 반드시 `FWPM_SESSION_FLAG_DYNAMIC` 플래그를 사용하여 엽니다. 기존 규칙의 백업 및 복원 로직을 작성하지 마십시오.
+* **IPv4 & IPv6 듀얼 스택 완전 동기화:**
+  * 모든 차단(Block All), DNS 허용(Port 53), 포트 전용 필터는 IPv4 레이어(`FWPM_LAYER_ALE_AUTH_CONNECT_V4`)와 IPv6 레이어(`FWPM_LAYER_ALE_AUTH_CONNECT_V6`) 양쪽에 동시에 등록하여 우회 통로를 차단합니다.
+  * **바이트 오더 원칙:** WFP에서 IPv4 주소는 Host Byte Order(`ntohl`), IPv6 주소는 Network Byte Order 바이트 배열(`FWP_BYTE_ARRAY16_TYPE`)을 사용하는 규격을 엄격히 준수하십시오.
+* **DNS 최적화 원칙:** 도메인 해석 시 `AF_UNSPEC`을 지정한 `getaddrinfo`를 1회만 호출하여 IPv4와 IPv6 목록을 한 번에 추출하고 DNS 왕복 지연을 최소화하십시오.
 * **안전한 종료 보장:** RAII (Resource Acquisition Is Initialization) 패턴을 활용하여, C++ 클래스 소멸자에서 WFP 엔진 핸들이 안전하게 닫히도록(`FwpmEngineClose0`) 설계하십시오.
 
-## 5. IPC (Named Pipe) Communication
+## 5. IPC (Named Pipe) Protocol & JSON 규격
 
-* Electron 프론트엔드와의 통신은 비동기(Overlapped I/O) 또는 멀티스레드 기반의 Named Pipe로 구현하여 병목을 방지하십시오.
-* 데이터 교환 포맷은 JSON 직렬화를 사용합니다.
+* Named Pipe 이름: `\\.\pipe\Ransom0_Firewall`
+* 일반 권한 클라이언트 접근을 위해 SDDL `D:P(A;;GA;;;WD)` 보안 디스크립터를 적용합니다.
+* **Action 통합 처리 원칙:** `main_daemon.cpp` 내에서 `on`, `set`, `refresh` 등 공통 화이트리스트 갱신 로직을 중복 복사하지 말고 단일 제어 흐름으로 통합 처리하십시오.
+* **상태 전이 규칙:**
+  * `on`: 차단이 꺼져 있으면 활성화하며, 응답 `active`는 항상 `true`입니다. 인자가 없으면 마지막 저장된 구성을 적용합니다.
+  * `set`: **차단이 비활성화된 상태일 경우 자동으로 활성화하지 않으며, 기존 `active` 상태를 유지합니다.** `whitelist` 키가 생략되면 `refresh`와 동일하게 동작합니다.
+  * `refresh`: 현재 저장된 타겟들의 도메인 IP를 재해석하여 갱신합니다.
+  * `off`: 차단 해제 및 `active: false` 고정, 응답 시 `whitelist` 키를 포함하지 않습니다.
+* **`WhitelistItem` 표준 JSON 응답 스펙:**
+  * 모든 화이트리스트 항목은 `type`, `value`, `data` 구조를 따릅니다.
+  * `IPv4`: `data: { "ipv4": string, "port": number, "cidr": number }` (단일 IP는 `cidr: 32`)
+  * `IPv6`: `data: { "ipv6": string, "port": number, "cidr": number }` (단일 IP는 `cidr: 128`)
+  * `Domain` / `URL`: `data: { "domain": string, "port": number, "ipv4": string[], "ipv6": string[] }`
+  * `Port`: `data: { "port": number }`
 
 ## 6. Naming Conventions (명명 규칙)
 
 * **Folder/File:** `kebab-case` (ex: `kebab-case.h`, `kebab-case.cpp`)
-* **Classes/Structs:** `PascalCase` (ex: `FirewallManager`)
-* **Functions/Methods:** `PascalCase` (ex: `EnableIsolation`, `ParseIpAddress`)
-* **Variables/Parameters:** `camelCase` (ex: `whitelistIps`, `engineHandle`)
-* **Constants/Macros:** `UPPER_SNAKE_CASE` (ex: `MAX_BUFFER_SIZE`)
+* **Classes/Structs:** `PascalCase` (ex: `Manager`, `WhitelistRecord`)
+* **Functions/Methods:** `PascalCase` (ex: `Enable`, `ParseIpv4`, `SplitHostAndPort`)
+* **Variables/Parameters:** `camelCase` (ex: `whitelistTargets`, `engineHandle`)
+* **Constants/Macros:** `UPPER_SNAKE_CASE` (ex: `PIPE_NAME`, `MAX_BUFFER_SIZE`)
