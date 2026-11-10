@@ -34,8 +34,11 @@
 
 ## Usage
 
-> [!NOTE]
-> 빌드 시 `r0-fw-cli.exe`와 `r0-fw-daemon.exe` 파일이 생성됩니다.
+> [!TIP]
+> [Releases](https://github.com/ransomguard/firewall-manager/releases)
+> 페이지에서 실행 파일을 다운로드할 수 있습니다.
+
+빌드 시 `r0-fw-cli.exe`와 `r0-fw-daemon.exe` 파일이 생성됩니다.
 
 ### CLI
 
