@@ -9,6 +9,15 @@
 
 namespace Ransom0 {
     namespace Firewall {
+        enum class Direction : uint8_t {
+            Outbound = 1 << 0,
+            Inbound  = 1 << 1,
+            Both     = Outbound | Inbound
+        };
+
+        std::string DirectionToString(Direction dir);
+        bool ParseDirection(const std::string& str, Direction& outDir);
+
         struct WhitelistRecord {
             std::string type;   // "ipv4", "ipv6", "domain", "url", "port"
             std::string value;  // 원본 입력값
@@ -38,10 +47,23 @@ namespace Ransom0 {
             bool IsActive() const;
 
             /**
+             * @brief 현재 설정된 트래픽 방향 조회
+             * @return Direction (Outbound, Inbound, Both)
+             */
+            Direction GetDirection() const;
+
+            /**
+             * @brief 트래픽 방향 설정
+             * @param dir 설정할 방향 (Outbound, Inbound, Both)
+             */
+            void SetDirection(Direction dir);
+
+            /**
              * @brief 방화벽 격리 활성화 (Block All + DNS 허용)
+             * @param dir 차단 및 제어할 트래픽 방향 (기본값: Both)
              * @return 성공 시 true, 실패 시(방화벽이 이미 활성화된 경우) false
              */
-            bool Enable();
+            bool Enable(Direction dir = Direction::Both);
 
             /**
              * @brief 화이트리스트 설정

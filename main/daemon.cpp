@@ -29,14 +29,15 @@ int main(int argc, char* argv[]) {
     LPCSTR pipeName = "\\\\.\\pipe\\Ransom0_Firewall";
     Ransom0::Firewall::Manager fwManager;
 
+    Ransom0::Firewall::Direction globalDirection = Ransom0::Firewall::Direction::Both;
     std::vector<std::string> globalRawTargets;
     nlohmann::json cachedWhitelistState = nlohmann::json::array();
 
     // ==========================================
     // 상세 로그 출력을 위한 람다 함수
     // ==========================================
-    auto printWhitelistLog = [](const std::string& prefix, const std::vector<Ransom0::Firewall::WhitelistRecord>& records) {
-        std::cout << prefix << " 예외 대상: " << records.size() << "개\n";
+    auto printWhitelistLog = [](const std::string& prefix, Ransom0::Firewall::Direction dir, const std::vector<Ransom0::Firewall::WhitelistRecord>& records) {
+        std::cout << prefix << " [방향: " << Ransom0::Firewall::DirectionToString(dir) << "] 예외 대상: " << records.size() << "개\n";
         for (const auto& r : records) {
             std::cout << "  - " << r.value << " (" << r.type;
             if (r.port != 0) std::cout << ", Port: " << r.port;
@@ -106,15 +107,28 @@ int main(int argc, char* argv[]) {
         std::cout << "[+] CLI 인자 감지됨. 초기 화이트리스트 구성을 시작합니다...\n";
 
         for (int i = 1; i < argc; ++i) {
-            globalRawTargets.push_back(argv[i]);
+            std::string arg = argv[i];
+            if (arg == "-d" || arg == "--direction") {
+                if (i + 1 < argc) {
+                    Ransom0::Firewall::ParseDirection(argv[++i], globalDirection);
+                }
+            } else if (arg == "--in" || arg == "--inbound") {
+                globalDirection = Ransom0::Firewall::Direction::Inbound;
+            } else if (arg == "--out" || arg == "--outbound") {
+                globalDirection = Ransom0::Firewall::Direction::Outbound;
+            } else if (arg == "--both" || arg == "--all") {
+                globalDirection = Ransom0::Firewall::Direction::Both;
+            } else {
+                globalRawTargets.push_back(arg);
+            }
         }
 
         std::vector<Ransom0::Firewall::WhitelistRecord> records;
-        fwManager.Enable();
+        fwManager.Enable(globalDirection);
         fwManager.setWhitelist(globalRawTargets, &records);
 
         cachedWhitelistState = recordsToJson(records);
-        printWhitelistLog("[+] 방화벽 ON (CLI 초기화).", records);
+        printWhitelistLog("[+] 방화벽 ON (CLI 초기화).", globalDirection, records);
     }
 
     while (true) {
@@ -138,7 +152,21 @@ int main(int argc, char* argv[]) {
                         // 2. 들어온 문자열을 JSON 객체로 파싱
                         nlohmann::json payload = nlohmann::json::parse(buffer);
                         std::string action = payload["action"];
+                        response["success"] = true;
                         response["action"] = action;
+
+                        if (
+                            (action == "on" || action == "set")
+                            && payload.contains("direction")
+                            && payload["direction"].is_string()
+                        ) {
+                            Ransom0::Firewall::Direction parsedDir;
+                            if (Ransom0::Firewall::ParseDirection(payload["direction"].get<std::string>(), parsedDir)) {
+                                globalDirection = parsedDir;
+                                fwManager.SetDirection(globalDirection);
+                            }
+                        }
+                        response["direction"] = Ransom0::Firewall::DirectionToString(globalDirection);
 
                         if (action == "on" || action == "set" || action == "refresh") {
                             // Payload에 새로운 whitelist가 있다면 덮어쓰기, 없다면 기존 타겟 유지
@@ -153,37 +181,36 @@ int main(int argc, char* argv[]) {
                             // 3. 화이트리스트 설정
                             std::vector<Ransom0::Firewall::WhitelistRecord> records;
 
-                            if (action == "on") fwManager.Enable();
+                            if (action == "on") fwManager.Enable(globalDirection);
                             fwManager.setWhitelist(globalRawTargets, &records);
 
                             // 4. 반환된 C++ 구조체를 JSON 객체로 변환하여 캐시에 덮어쓰기
                             cachedWhitelistState = recordsToJson(records);
 
-                            response["success"] = true;
-                            response["active"] = (action == "on") ? true : fwManager.IsActive();
+                            response["active"] = fwManager.IsActive();
                             response["whitelist"] = cachedWhitelistState;
 
                             if (action == "on") {
-                                printWhitelistLog("[+] 방화벽 ON.", records);
+                                printWhitelistLog("[+] 방화벽 ON.", globalDirection, records);
                             } else if (action == "set") {
-                                printWhitelistLog("[+] 방화벽 SET.", records);
+                                printWhitelistLog("[+] 방화벽 SET.", globalDirection, records);
                             } else if (action == "refresh") {
-                                printWhitelistLog("[+] 방화벽 REFRESH.", records);
+                                printWhitelistLog("[+] 방화벽 REFRESH.", globalDirection, records);
                             }
                         }
                         else if (action == "get") {
-                            response["success"] = true;
                             response["active"] = fwManager.IsActive();
                             response["whitelist"] = cachedWhitelistState;
                         }
                         else if (action == "off") {
                             fwManager.Disable();
                             std::cout << "[+] 방화벽 OFF. 롤백 완료.\n\n";
-                            response["success"] = true;
+                            response.erase("direction");
                             response["active"] = false;
                         }
                         else {
                             response.erase("action");
+                            response.erase("direction");
                             response["success"] = false;
                             response["message"] = "Unknown action command.";
                         }

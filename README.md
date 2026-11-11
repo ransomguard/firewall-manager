@@ -40,15 +40,19 @@
 
 빌드 시 `r0-fw-cli.exe`와 `r0-fw-daemon.exe` 파일이 생성됩니다.
 
+Usage: `file.exe [-d <both|out|in>] [target_1] [target_2] ...`
+
+- `-d`, `--direction <both|out|in>`: 화이트리스트 허용 방향 설정 (기본값: `both`)
+
 ### CLI
 
 파일 실행 시 전체 네트워크가 차단되며, 인자로 전달된 대상들을 화이트리스트로 설정합니다.
 `Ctrl+c`를 눌러 종료할 때까지 대기하며, 종료 시 네트워크 차단을 해제합니다.
 
-Usage: `r0-fw-cli.exe [target_1] [target_2] ...`
-
 ```powershell
 r0-fw-cli.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
+r0-fw-cli.exe -d out 192.168.0.1:8080
+r0-fw-cli.exe -d in 8080 *:8080
 ```
 
 ### Daemon
@@ -72,6 +76,7 @@ CLI처럼 초기 값을 구성할 수도 있습니다.
 
 ```powershell
 r0-fw-daemon.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
+r0-fw-daemon.exe -d in 192.168.0.1:8080
 ```
 
 #### on
@@ -86,10 +91,12 @@ Whitelist를 제공하지 않으면 저장된 구성을 그대로 적용합니�
 ```
 
 제공된 값으로 Whitelist를 구성합니다.
-빈 배열을 전달하여 Whitelist 구성 없이 활성화할 수 있습니다.
+
+`direction` ("both", "out", "in")을 지정할 수 있습니다.
+(생략 시 기존 상태 유지)
 
 ```jsonc
-{"action":"on","whitelist":["192.168.0.1"]}
+{"action":"on","direction":"both","whitelist":["192.168.0.1"]}
 ```
 
 #### set
@@ -100,10 +107,13 @@ Whitelist를 제공하지 않으면 저장된 구성을 그대로 적용합니�
 Whitelist를 설정합니다.
 이전 구성 값은 전부 제거됩니다.
 
+`direction` ("both", "out", "in")을 지정할 수 있습니다.
+(생략 시 기존 상태 유지)
+
 `whitelist` key가 없으면 `refresh`와 동일하게 동작합니다.
 
 ```jsonc
-{"action":"set","whitelist":["192.168.0.1"]}
+{"action":"set","direction":"both","whitelist":["192.168.0.1"]}
 ```
 
 #### get
@@ -153,6 +163,7 @@ Whitelist를 설정합니다.
     "success": true,
     "active": true, // 네트워크 차단 활성화 상태 여부, on은 true로 고정
     "action": "on", // set, get, refresh
+    "direction": "both", // "both", "outbound", "inbound"
     "whitelist": []
 }
 ```

@@ -25,9 +25,14 @@ int main(int argc, char* argv[]) {
     }
 
     if (argc < 2) {
-        std::cout << "Usage: r0-fw-cli.exe [whitelist_target_1] [whitelist_target_2] ...\n";
+        std::cout << "Usage: r0-fw-cli.exe [-d <both|out|in>] [target_1] [target_2] ...\n";
+        std::cout << "Options:\n";
+        std::cout << "  -d, --direction <dir>  화이트리스트 허용 방향 설정 (both, out, in / 기본값: both)\n";
+        std::cout << "\n";
         std::cout << "Examples:\n";
         std::cout << "  r0-fw-cli.exe 192.168.0.1 fd00::1\n";
+        std::cout << "  r0-fw-cli.exe -d in 192.168.0.1 fd00::1\n";
+        std::cout << "  r0-fw-cli.exe -d out 192.168.0.1 fd00::1\n";
         std::cout << "  r0-fw-cli.exe 192.168.0.1:8080 [fd00::1]:8443\n";
         std::cout << "  r0-fw-cli.exe 192.168.0.0/24 10.0.0.0/8 fd00::/64\n";
         std::cout << "  r0-fw-cli.exe 192.168.0.0/24:22 [fd00::/64]:8080\n";
@@ -38,17 +43,44 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Ransom0::Firewall::Manager fwManager;
+    Ransom0::Firewall::Direction direction = Ransom0::Firewall::Direction::Both;
     std::vector<std::string> targets;
-    for (int i = 1; i < argc; ++i) targets.push_back(argv[i]);
 
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "-d" || arg == "--direction") {
+            if (i + 1 < argc) {
+                std::string dirVal = argv[++i];
+                if (!Ransom0::Firewall::ParseDirection(dirVal, direction)) {
+                    std::cerr << "[-] 알 수 없는 direction 값: " << dirVal << " (both, out, in 중 선택)\n";
+                    WSACleanup();
+                    return 1;
+                }
+            } else {
+                std::cerr << "[-] -d/--direction 옵션 뒤에 방향(both, out, in)을 지정해야 합니다.\n";
+                WSACleanup();
+                return 1;
+            }
+        } else if (arg == "--in" || arg == "--inbound") {
+            direction = Ransom0::Firewall::Direction::Inbound;
+        } else if (arg == "--out" || arg == "--outbound") {
+            direction = Ransom0::Firewall::Direction::Outbound;
+        } else if (arg == "--both" || arg == "--all") {
+            direction = Ransom0::Firewall::Direction::Both;
+        } else {
+            targets.push_back(arg);
+        }
+    }
+
+    Ransom0::Firewall::Manager fwManager;
     std::vector<Ransom0::Firewall::WhitelistRecord> records;
 
-    if (!fwManager.Enable()) {
+    if (!fwManager.Enable(direction)) {
         std::cerr << "[-] 방화벽 활성화 실패.\n";
     } else if (!fwManager.setWhitelist(targets, &records)) {
         std::cerr << "[-] 방화벽 화이트리스트 설정 실패.\n";
     } else {
+        std::cout << "[+] 트래픽 방향: " << Ransom0::Firewall::DirectionToString(direction) << "\n";
         std::cout << "\n[ Whitelist Details ]\n";
         for (const auto& r : records) {
             std::cout << " - " << r.value << " (" << r.type;
@@ -69,7 +101,7 @@ int main(int argc, char* argv[]) {
             }
         }
         std::cout << "\n============================================\n";
-        std::cout << "   방화벽 차단 모드가 활성화되었습니다.\n";
+        std::cout << "   방화벽 차단 모드가 활성화되었습니다. (" << Ransom0::Firewall::DirectionToString(direction) << ")\n";
         std::cout << "   [!] 종료하려면 Ctrl+C를 누르세요.\n";
         std::cout << "============================================\n";
 
