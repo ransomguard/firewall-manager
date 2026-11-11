@@ -15,22 +15,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Create Dist Directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-      - name: Build
-        run: cmake --build build --config Release
-
-      - name: Package Executables
+      - name: Setup Build Function
         shell: pwsh
         run: |
-          Compress-Archive -Path bin/r0-fw-cli.exe, bin/r0-fw-daemon.exe -DestinationPath bin/ransom0-firewall-windows-x64.zip
+          @'
+          param([string]$Arch, [string]$CmakeArch)
+          cmake -B "build-$Arch" -A $CmakeArch
+          cmake --build "build-$Arch" --config Release
+          Copy-Item "bin/r0-fw-cli.exe" -Destination "dist/r0-fw-cli-windows-$Arch.exe"
+          Copy-Item "bin/r0-fw-daemon.exe" -Destination "dist/r0-fw-daemon-windows-$Arch.exe"
+          Compress-Archive -Path "bin/*.exe" -DestinationPath "dist/ransom0-firewall-windows-$Arch.zip"
+          Remove-Item "bin/*.exe"
+          '@ | Set-Content -Path "build_and_package.ps1" -Encoding utf8
+
+      - name: Build amd64
+        shell: pwsh
+        run: .\build_and_package.ps1 -Arch "amd64" -CmakeArch "x64"
+
+      - name: Build arm64
+        shell: pwsh
+        run: .\build_and_package.ps1 -Arch "arm64" -CmakeArch "ARM64"
+
+      - name: Build x86
+        shell: pwsh
+        run: .\build_and_package.ps1 -Arch "x86" -CmakeArch "Win32"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: |
-            bin/r0-fw-cli.exe
-            bin/r0-fw-daemon.exe
-            bin/ransom0-firewall-windows-x64.zip
+          files: dist/*
