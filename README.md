@@ -116,6 +116,28 @@ Whitelist를 설정합니다.
 {"action":"set","direction":"both","whitelist":["192.168.0.1"]}
 ```
 
+#### add
+
+> [!NOTE]
+> 차단이 비활성화된 경우 자동으로 활성화하지 않습니다.
+
+기존 Whitelist에 새 항목을 추가합니다.
+
+```jsonc
+{"action":"add","whitelist":["10.0.0.1"]}
+```
+
+#### remove
+
+> [!NOTE]
+> 차단이 비활성화된 경우 자동으로 활성화하지 않습니다.
+
+기존 Whitelist에서 지정된 항목을 제거합니다.
+
+```jsonc
+{"action":"remove","whitelist":["192.168.0.1"]}
+```
+
 #### get
 
 현재 구성된 Whitelist를 조회합니다.

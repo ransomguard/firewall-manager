@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <windows.h>
 #include <sddl.h>
 
@@ -155,6 +156,7 @@ int main(int argc, char* argv[]) {
                         response["success"] = true;
                         response["action"] = action;
 
+                        // direction 처리: on, set, add, remove에서 direction 갱신 가능 (refresh, off, get은 변경 X)
                         if (
                             (action == "on" || action == "set")
                             && payload.contains("direction")
@@ -168,17 +170,44 @@ int main(int argc, char* argv[]) {
                         }
                         response["direction"] = Ransom0::Firewall::DirectionToString(globalDirection);
 
-                        if (action == "on" || action == "set" || action == "refresh") {
+                        if (action == "on" || action == "set" || action == "add" || action == "remove" || action == "refresh") {
                             // Payload에 새로운 whitelist가 있다면 덮어쓰기, 없다면 기존 타겟 유지
                             // on/set 시 whitelist가 없으면 마지막에 설정한 값으로 적용하기 위함
                             // on/set 시 whitelist를 설정하지 않으려면 빈 배열을 보내면 됨
                             // = on 시 whitelist가 없으면 차단 활성화 + refresh 효과와 같음
                             // = set 시 whitelist가 없으면 refresh와 동일하게 동작함
-                            if (action != "refresh" && payload.contains("whitelist")) {
-                                globalRawTargets = payload["whitelist"].get<std::vector<std::string>>();
-                            }
 
-                            // 3. 화이트리스트 설정
+                            if (action == "on" || action == "set") {
+                                if (payload.contains("whitelist")) {
+                                    globalRawTargets = payload["whitelist"].get<std::vector<std::string>>();
+                                }
+                            }
+                            else if (action == "add") {
+                                // add: 새 타겟 중복 없이 기존 목록에 추가
+                                if (payload.contains("whitelist")) {
+                                    auto newTargets = payload["whitelist"].get<std::vector<std::string>>();
+                                    for (const auto& target : newTargets) {
+                                        if (std::find(globalRawTargets.begin(), globalRawTargets.end(), target) == globalRawTargets.end()) {
+                                            globalRawTargets.push_back(target);
+                                        }
+                                    }
+                                }
+                            }
+                            else if (action == "remove") {
+                                // remove: 지정된 타겟들을 기존 목록에서 제거
+                                if (payload.contains("whitelist")) {
+                                    auto targetsToRemove = payload["whitelist"].get<std::vector<std::string>>();
+                                    for (const auto& target : targetsToRemove) {
+                                        globalRawTargets.erase(
+                                            std::remove(globalRawTargets.begin(), globalRawTargets.end(), target),
+                                            globalRawTargets.end()
+                                        );
+                                    }
+                                }
+                            }
+                            // refresh는 globalRawTargets 그대로 유지하여 재해석 수행
+
+                            // 3. 화이트리스트 적용
                             std::vector<Ransom0::Firewall::WhitelistRecord> records;
 
                             if (action == "on") fwManager.Enable(globalDirection);
@@ -194,6 +223,10 @@ int main(int argc, char* argv[]) {
                                 printWhitelistLog("[+] 방화벽 ON.", globalDirection, records);
                             } else if (action == "set") {
                                 printWhitelistLog("[+] 방화벽 SET.", globalDirection, records);
+                            } else if (action == "add") {
+                                printWhitelistLog("[+] 방화벽 ADD.", globalDirection, records);
+                            } else if (action == "remove") {
+                                printWhitelistLog("[+] 방화벽 REMOVE.", globalDirection, records);
                             } else if (action == "refresh") {
                                 printWhitelistLog("[+] 방화벽 REFRESH.", globalDirection, records);
                             }

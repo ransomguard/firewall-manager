@@ -43,10 +43,12 @@
 
 * Named Pipe 이름: `\\.\pipe\Ransom0_Firewall`
 * 일반 권한 클라이언트 접근을 위해 SDDL `D:P(A;;GA;;;WD)` 보안 디스크립터를 적용합니다.
-* **Action 통합 처리 원칙:** `main/daemon.cpp` 내에서 `on`, `set`, `refresh` 등 공통 화이트리스트 갱신 로직을 중복 복사하지 말고 단일 제어 흐름으로 통합 처리하십시오.
+* **Action 통합 처리 원칙:** `main/daemon.cpp` 내에서 `on`, `set`, `add`, `remove`, `refresh` 등 공통 화이트리스트 갱신 로직을 중복 복사하지 말고 단일 제어 흐름으로 통합 처리하십시오.
 * **상태 전이 규칙:**
   * `on`: 차단이 꺼져 있으면 활성화하며, 응답 `active`는 항상 `true`입니다. 인자가 없으면 마지막 저장된 구성을 적용합니다.
   * `set`: **차단이 비활성화된 상태일 경우 자동으로 활성화하지 않으며, 기존 `active` 상태를 유지합니다.** `whitelist` 키가 생략되면 `refresh`와 동일하게 동작합니다.
+  * `add`: 기존 화이트리스트에 새 항목을 추가(중복 자동 제외)하며, 기존 `active` 상태를 유지합니다.
+  * `remove`: 기존 화이트리스트에서 지정된 항목을 제거하며, 기존 `active` 상태를 유지합니다.
   * `refresh`: 현재 저장된 타겟들의 도메인 IP를 재해석하여 갱신합니다.
   * `off`: 차단 해제 및 `active: false` 고정, 응답 시 `whitelist` 키를 포함하지 않습니다.
 * **`WhitelistItem` 표준 JSON 응답 스펙:**
