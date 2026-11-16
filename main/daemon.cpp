@@ -32,6 +32,7 @@ int main(int argc, char* argv[]) {
 
     Ransom0::Firewall::Direction globalDirection = Ransom0::Firewall::Direction::Both;
     std::vector<std::string> globalRawTargets;
+    std::vector<std::string> protectedTargets; // CLI 인자로 제공된 제거 불가능한 보호 대상
     nlohmann::json cachedWhitelistState = nlohmann::json::array();
 
     // ==========================================
@@ -107,6 +108,9 @@ int main(int argc, char* argv[]) {
     if (argc > 1) {
         std::cout << "[+] CLI 인자 감지됨. 초기 화이트리스트 구성을 시작합니다...\n";
 
+        // --protect-ip 옵션 이후 오는 항목은 보호 대상 Whitelist IP로 처리
+        bool inProtectSection = false;
+
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "-d" || arg == "--direction") {
@@ -119,10 +123,18 @@ int main(int argc, char* argv[]) {
                 globalDirection = Ransom0::Firewall::Direction::Outbound;
             } else if (arg == "--both" || arg == "--all") {
                 globalDirection = Ransom0::Firewall::Direction::Both;
+            } else if (arg == "--protect-ip") {
+                inProtectSection = true;
             } else {
                 globalRawTargets.push_back(arg);
+                if (inProtectSection) {
+                    protectedTargets.push_back(arg);
+                }
             }
         }
+
+        std::cout << "  - 일반 대상(Unprotected, 삭제 가능): " << (globalRawTargets.size() - protectedTargets.size()) << "개\n";
+        std::cout << "  - 보호 대상(Protected, 삭제 불가): " << protectedTargets.size() << "개\n";
 
         std::vector<Ransom0::Firewall::WhitelistRecord> records;
         fwManager.Enable(globalDirection);
@@ -180,6 +192,12 @@ int main(int argc, char* argv[]) {
                             if (action == "on" || action == "set") {
                                 if (payload.contains("whitelist")) {
                                     globalRawTargets = payload["whitelist"].get<std::vector<std::string>>();
+                                    // 보호 대상은 항상 유지
+                                    for (const auto& pt : protectedTargets) {
+                                        if (std::find(globalRawTargets.begin(), globalRawTargets.end(), pt) == globalRawTargets.end()) {
+                                            globalRawTargets.push_back(pt);
+                                        }
+                                    }
                                 }
                             }
                             else if (action == "add") {
@@ -198,6 +216,10 @@ int main(int argc, char* argv[]) {
                                 if (payload.contains("whitelist")) {
                                     auto targetsToRemove = payload["whitelist"].get<std::vector<std::string>>();
                                     for (const auto& target : targetsToRemove) {
+                                        // 보호 대상은 항상 유지
+                                        if (std::find(protectedTargets.begin(), protectedTargets.end(), target) != protectedTargets.end()) {
+                                            continue;
+                                        }
                                         globalRawTargets.erase(
                                             std::remove(globalRawTargets.begin(), globalRawTargets.end(), target),
                                             globalRawTargets.end()
