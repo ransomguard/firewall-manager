@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
                         response["success"] = true;
                         response["action"] = action;
 
-                        // direction 처리: on, set, add, remove에서 direction 갱신 가능 (refresh, off, get은 변경 X)
+                        // direction 처리: on, set에서만 direction 갱신 가능
                         if (
                             (action == "on" || action == "set")
                             && payload.contains("direction")
