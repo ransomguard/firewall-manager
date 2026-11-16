@@ -74,9 +74,16 @@ r0-fw-daemon.exe
 CLI처럼 초기 값을 구성할 수도 있습니다.
 초기 값을 구성할 경우 차단이 기본적으로 활성화됩니다.
 
+> [!NOTE]
+> - **기본 위치 인자**: 일반 화이트리스트(Unprotected)로 분류되어 향후 `set`, `remove`를 통해 제거할 수 있습니다.
+> - **`--protect-ip` (또는 `--protect`) 뒤 인자**: 보호 대상(Protected)으로 취급되어 `on`, `set`, `remove`를 통해 제거할 수 없습니다.
+
 ```powershell
+# 192.168.0.1 등 기본 인자는 추후 삭제 가능한 일반 목록으로 설정
 r0-fw-daemon.exe 192.168.0.1 [fd00::1/64]:8000 https://sub.example.com/path/to
-r0-fw-daemon.exe -d in 192.168.0.1:8080
+
+# 192.168.1.1과 10.0.0.1은 삭제 가능한 일반 목록, 127.0.0.1은 영구 보호 목록으로 설정
+r0-fw-daemon.exe 192.168.1.1 10.0.0.1 --protect-ip 127.0.0.1
 ```
 
 #### on

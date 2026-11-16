@@ -33,8 +33,15 @@
 ## 4. WFP (Windows Filtering Platform) API & Dual-Stack 원칙
 
 * **Dynamic Session Only:** 롤백의 완벽성을 위해 방화벽 엔진 핸들은 반드시 `FWPM_SESSION_FLAG_DYNAMIC` 플래그를 사용하여 엽니다. 기존 규칙의 백업 및 복원 로직을 작성하지 마십시오.
+* **완전 격리(Total Isolation) 원칙:**
+  * 기본 차단(Block All)은 `direction` 옵션과 무관하게 항상 **인바운드/아웃바운드 양방향을 100% 완전 차단**합니다.
+  * IPv4/IPv6 아웃바운드 레이어(`FWPM_LAYER_ALE_AUTH_CONNECT_V4/V6`) 및 인바운드 수신 레이어(`FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4/V6`) 모두에 기본 차단 필터를 등록합니다.
+  * DNS 기본 허용(UDP/TCP 53)은 도메인 해석을 위해 항상 아웃바운드 레이어에 등록됩니다.
+* **화이트리스트 방향성(Directional Whitelist) 원칙:**
+  * `direction`(`both`, `out`, `in`) 옵션은 **화이트리스트(Permit 예외 규칙)가 적용되는 통신 방향만 제어**합니다. (기본값: `both`)
+  * 아웃바운드 허용 필터는 원격 대상 포트(`FWPM_CONDITION_IP_REMOTE_PORT`)를, 인바운드 허용 필터는 로컬 수신 포트(`FWPM_CONDITION_IP_LOCAL_PORT`)를 조건으로 바인딩합니다.
 * **IPv4 & IPv6 듀얼 스택 완전 동기화:**
-  * 모든 차단(Block All), DNS 허용(Port 53), 포트 전용 필터는 IPv4 레이어(`FWPM_LAYER_ALE_AUTH_CONNECT_V4`)와 IPv6 레이어(`FWPM_LAYER_ALE_AUTH_CONNECT_V6`) 양쪽에 동시에 등록하여 우회 통로를 차단합니다.
+  * 모든 차단(Block All), DNS 허용(Port 53), 화이트리스트 필터는 IPv4 레이어와 IPv6 레이어 양쪽에 동시에 등록하여 우회 통로를 차단합니다.
   * **바이트 오더 원칙:** WFP에서 IPv4 주소는 Host Byte Order(`ntohl`), IPv6 주소는 Network Byte Order 바이트 배열(`FWP_BYTE_ARRAY16_TYPE`)을 사용하는 규격을 엄격히 준수하십시오.
 * **DNS 최적화 원칙:** 도메인 해석 시 `AF_UNSPEC`을 지정한 `getaddrinfo`를 1회만 호출하여 IPv4와 IPv6 목록을 한 번에 추출하고 DNS 왕복 지연을 최소화하십시오.
 * **안전한 종료 보장:** RAII (Resource Acquisition Is Initialization) 패턴을 활용하여, C++ 클래스 소멸자에서 WFP 엔진 핸들이 안전하게 닫히도록(`FwpmEngineClose0`) 설계하십시오.
@@ -48,9 +55,15 @@
   * `on`: 차단이 꺼져 있으면 활성화하며, 응답 `active`는 항상 `true`입니다. 인자가 없으면 마지막 저장된 구성을 적용합니다.
   * `set`: **차단이 비활성화된 상태일 경우 자동으로 활성화하지 않으며, 기존 `active` 상태를 유지합니다.** `whitelist` 키가 생략되면 `refresh`와 동일하게 동작합니다.
   * `add`: 기존 화이트리스트에 새 항목을 추가(중복 자동 제외)하며, 기존 `active` 상태를 유지합니다.
-  * `remove`: 기존 화이트리스트에서 지정된 항목을 제거하며, 기존 `active` 상태를 유지합니다.
+  * `remove`: 기존 화이트리스트에서 지정된 항목을 제거하며, 기존 `active` 상태를 유지합니다. (단, CLI 인자로 지정된 보호 항목은 제거되지 않고 무시됨)
   * `refresh`: 현재 저장된 타겟들의 도메인 IP를 재해석하여 갱신합니다.
-  * `off`: 차단 해제 및 `active: false` 고정, 응답 시 `whitelist` 키를 포함하지 않습니다.
+  * `off`: 차단 해제 및 `active: false` 고정, 응답 시 `whitelist` 및 `direction` 키를 포함하지 않습니다.
+* **Direction(허용 방향) 제어 및 상태 유지 규칙:**
+  * `on`, `set`, `add`, `remove` 액션 요청 시 `direction` 키(`"both"`, `"out"`, `"in"`)를 지정하여 화이트리스트 적용 방향을 변경할 수 있습니다.
+  * 요청 페이로드에 `direction` 키가 생략되면 기존에 설정된 허용 방향을 그대로 유지합니다. (데몬 시작 시 초기값: `"both"`)
+  * `get`, `refresh`, `off` 액션에서는 방향을 변경할 수 없습니다.
+  * JSON 응답: 활성/조회 응답(`on`, `set`, `add`, `remove`, `refresh`, `get`) 시 최상위에 현재 적용 중인 `direction: string` 필드가 항상 포함됩니다. (`off` 응답 시에는 제외)
+* **CLI 인자 보호 규칙 (Protected Items):** 데몬 구동 시 플래그 없이 전달된 기본 위치 인자들은 삭제 가능한 일반 화이트리스트로 분류되며, `--protect-ip` (또는 `--protect`) 플래그 뒤에 지정된 항목들은 불변의 보호(Protected) 항목으로 취급됩니다. 보호 항목은 `set`이나 `on` 명령으로 새로운 화이트리스트를 덮어쓰거나, `remove` 명령으로 해당 항목의 제거를 요청하더라도 에러를 발생시키지 않고 무시(유지)되어 항상 화이트리스트에 보존됩니다.
 * **`WhitelistItem` 표준 JSON 응답 스펙:**
   * 모든 화이트리스트 항목은 `type`, `value`, `data` 구조를 따릅니다.
   * `IPv4`: `data: { "ipv4": string, "port": number, "cidr": number }` (단일 IP는 `cidr: 32`)
