@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <stdexcept>
 #include <windows.h>
 #include <sddl.h>
 
@@ -123,7 +124,7 @@ int main(int argc, char* argv[]) {
                 globalDirection = Ransom0::Firewall::Direction::Outbound;
             } else if (arg == "--both" || arg == "--all") {
                 globalDirection = Ransom0::Firewall::Direction::Both;
-            } else if (arg == "--protect-ip") {
+            } else if (arg == "--protect-ip" || arg == "--protect") {
                 inProtectSection = true;
             } else {
                 globalRawTargets.push_back(arg);
@@ -168,17 +169,23 @@ int main(int argc, char* argv[]) {
                         response["success"] = true;
                         response["action"] = action;
 
-                        // direction 처리: on, set에서만 direction 갱신 가능
-                        if (
-                            (action == "on" || action == "set")
-                            && payload.contains("direction")
-                            && payload["direction"].is_string()
-                        ) {
-                            Ransom0::Firewall::Direction parsedDir;
-                            if (Ransom0::Firewall::ParseDirection(payload["direction"].get<std::string>(), parsedDir)) {
-                                globalDirection = parsedDir;
-                                fwManager.SetDirection(globalDirection);
+                        // Validate the complete mutation before changing shared policy state.
+                        auto requestedDirection = globalDirection;
+                        const bool canChangePolicy = action == "on" || action == "set" || action == "add" || action == "remove";
+                        if (payload.contains("direction")) {
+                            if (!canChangePolicy || !payload["direction"].is_string() ||
+                                !Ransom0::Firewall::ParseDirection(payload["direction"].get<std::string>(), requestedDirection)) {
+                                throw std::invalid_argument("Invalid whitelist direction for action");
                             }
+                        }
+                        if (payload.contains("whitelist")) {
+                            if (!canChangePolicy) throw std::invalid_argument("Action cannot update whitelist");
+                            // A malformed list must not partially change the direction.
+                            payload["whitelist"].get<std::vector<std::string>>();
+                        }
+                        if (canChangePolicy) {
+                            globalDirection = requestedDirection;
+                            fwManager.SetDirection(globalDirection);
                         }
                         response["direction"] = Ransom0::Firewall::DirectionToString(globalDirection);
 
