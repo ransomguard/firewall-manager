@@ -64,5 +64,5 @@ cmake_install.cmake
 Thumbs.db
 
 # txt
-*[-_][0-9].txt
-*[-_][0-9].md
+*[-_][0-9]*.txt
+*[-_][0-9]*.md
